@@ -5,8 +5,9 @@ import {
   gameMovesTable,
   gamePlayersTable,
   usersTable,
+  friendshipsTable,
 } from "@workspace/db";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate";
 import { generateId } from "../lib/auth";
 import { notifyTurn } from "../lib/notifications";
@@ -641,6 +642,28 @@ router.post("/games/:gameId/rematch", authenticate, async (req, res) => {
 });
 
 router.get("/leaderboard", authenticate, async (req, res) => {
+  const { userId } = req as AuthRequest;
+
+  // Collect accepted friend IDs (friendship can be in either direction)
+  const friendRows = await db
+    .select({ requesterId: friendshipsTable.requesterId, addresseeId: friendshipsTable.addresseeId })
+    .from(friendshipsTable)
+    .where(
+      and(
+        eq(friendshipsTable.status, "accepted"),
+        or(
+          eq(friendshipsTable.requesterId, userId),
+          eq(friendshipsTable.addresseeId, userId)
+        )
+      )
+    );
+
+  const friendIds = friendRows.map((f) =>
+    f.requesterId === userId ? f.addresseeId : f.requesterId
+  );
+  // Always include the current user so they always appear on their own leaderboard
+  const allowedIds = [userId, ...friendIds];
+
   const rows = await db
     .select({
       id: usersTable.id,
@@ -656,6 +679,7 @@ router.get("/leaderboard", authenticate, async (req, res) => {
       gamesTable,
       and(eq(gamesTable.id, gamePlayersTable.gameId), eq(gamesTable.status, "finished"))
     )
+    .where(inArray(usersTable.id, allowedIds))
     .groupBy(usersTable.id, usersTable.username, usersTable.avatarUrl)
     .orderBy(
       desc(sql`count(case when ${gamesTable.winnerId} = ${usersTable.id} then 1 end)`),
