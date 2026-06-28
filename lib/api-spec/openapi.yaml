@@ -631,6 +631,23 @@ paths:
                 $ref: "#/components/schemas/ChatMessage"
 
   # Stats
+  /leaderboard:
+    get:
+      operationId: getLeaderboard
+      tags: [stats]
+      summary: Get top players leaderboard
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Leaderboard
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeaderboardEntry"
+
   /stats:
     get:
       operationId: getMyStats
@@ -1021,6 +1038,8 @@ components:
           format: date-time
         winnerId:
           type: ["string", "null"]
+        rematchGameId:
+          type: ["string", "null"]
         createdAt:
           type: string
           format: date-time
@@ -1037,6 +1056,7 @@ components:
         - consecutivePasses
         - turnDeadlineAt
         - winnerId
+        - rematchGameId
         - createdAt
         - updatedAt
 
@@ -1233,6 +1253,35 @@ components:
           maxLength: 500
       required:
         - message
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        rank:
+          type: integer
+        userId:
+          type: string
+        username:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        wins:
+          type: integer
+        gamesPlayed:
+          type: integer
+        winRate:
+          type: number
+        averageScore:
+          type: number
+      required:
+        - rank
+        - userId
+        - username
+        - avatarUrl
+        - wins
+        - gamesPlayed
+        - winRate
+        - averageScore
 
     # Stats schemas
     PlayerStats:

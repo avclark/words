@@ -323,6 +323,7 @@ export const CreateGameResponse = zod.object({
   "consecutivePasses": zod.number(),
   "turnDeadlineAt": zod.coerce.date().nullable(),
   "winnerId": zod.string().nullable(),
+  "rematchGameId": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -356,6 +357,7 @@ export const GetGameResponse = zod.object({
   "consecutivePasses": zod.number(),
   "turnDeadlineAt": zod.coerce.date().nullable(),
   "winnerId": zod.string().nullable(),
+  "rematchGameId": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -408,6 +410,7 @@ export const MakeMoveResponse = zod.object({
   "consecutivePasses": zod.number(),
   "turnDeadlineAt": zod.coerce.date().nullable(),
   "winnerId": zod.string().nullable(),
+  "rematchGameId": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }),
@@ -451,6 +454,7 @@ export const SwapTilesResponse = zod.object({
   "consecutivePasses": zod.number(),
   "turnDeadlineAt": zod.coerce.date().nullable(),
   "winnerId": zod.string().nullable(),
+  "rematchGameId": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }),
@@ -490,6 +494,7 @@ export const PassTurnResponse = zod.object({
   "consecutivePasses": zod.number(),
   "turnDeadlineAt": zod.coerce.date().nullable(),
   "winnerId": zod.string().nullable(),
+  "rematchGameId": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }),
@@ -529,6 +534,7 @@ export const ResignGameResponse = zod.object({
   "consecutivePasses": zod.number(),
   "turnDeadlineAt": zod.coerce.date().nullable(),
   "winnerId": zod.string().nullable(),
+  "rematchGameId": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }),
@@ -566,6 +572,7 @@ export const RequestRematchResponse = zod.object({
   "consecutivePasses": zod.number(),
   "turnDeadlineAt": zod.coerce.date().nullable(),
   "winnerId": zod.string().nullable(),
+  "rematchGameId": zod.string().nullable(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -706,6 +713,22 @@ export const SendChatMessageResponse = zod.object({
   "message": zod.string(),
   "createdAt": zod.coerce.date()
 })
+
+
+/**
+ * @summary Get top players leaderboard
+ */
+export const GetLeaderboardResponseItem = zod.object({
+  "rank": zod.number(),
+  "userId": zod.string(),
+  "username": zod.string(),
+  "avatarUrl": zod.string().nullable(),
+  "wins": zod.number(),
+  "gamesPlayed": zod.number(),
+  "winRate": zod.number(),
+  "averageScore": zod.number()
+})
+export const GetLeaderboardResponse = zod.array(GetLeaderboardResponseItem)
 
 
 /**

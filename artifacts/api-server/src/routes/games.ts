@@ -6,7 +6,7 @@ import {
   gamePlayersTable,
   usersTable,
 } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate";
 import { generateId } from "../lib/auth";
 import { notifyTurn } from "../lib/notifications";
@@ -74,6 +74,7 @@ async function buildGameState(
     consecutivePasses: game.consecutivePasses,
     turnDeadlineAt: game.turnDeadlineAt?.toISOString() ?? null,
     winnerId: game.winnerId,
+    rematchGameId: game.rematchGameId ?? null,
     createdAt: game.createdAt.toISOString(),
     updatedAt: game.updatedAt.toISOString(),
   };
@@ -573,6 +574,22 @@ router.post("/games/:gameId/rematch", authenticate, async (req, res) => {
   }
 
   const players = await db.select().from(gamePlayersTable).where(eq(gamePlayersTable.gameId, gameId));
+  if (!players.some((p) => p.userId === userId)) {
+    res.status(403).json({ error: "Not a player" });
+    return;
+  }
+
+  // If a rematch already exists, return it instead of creating a duplicate
+  if (game.rematchGameId) {
+    const [existing] = await db.select().from(gamesTable).where(eq(gamesTable.id, game.rematchGameId)).limit(1);
+    if (existing) {
+      const existingPlayers = await db.select().from(gamePlayersTable).where(eq(gamePlayersTable.gameId, existing.id));
+      const state = await buildGameState(existing, existingPlayers, userId);
+      res.status(200).json(state);
+      return;
+    }
+  }
+
   const opponent = players.find((p) => p.userId !== userId);
   if (!opponent) {
     res.status(400).json({ error: "Opponent not found" });
@@ -615,9 +632,50 @@ router.post("/games/:gameId/rematch", authenticate, async (req, res) => {
     });
   }
 
+  // Store rematchGameId on the original game to prevent duplicate rematches
+  await db.update(gamesTable).set({ rematchGameId: newGameId }).where(eq(gamesTable.id, gameId));
+
   const gamePlayers = await db.select().from(gamePlayersTable).where(eq(gamePlayersTable.gameId, newGameId));
   const state = await buildGameState(newGame!, gamePlayers, userId);
   res.status(201).json(state);
+});
+
+router.get("/leaderboard", authenticate, async (req, res) => {
+  const rows = await db
+    .select({
+      id: usersTable.id,
+      username: usersTable.username,
+      avatarUrl: usersTable.avatarUrl,
+      wins: sql<number>`cast(count(case when ${gamesTable.winnerId} = ${usersTable.id} then 1 end) as int)`,
+      gamesPlayed: sql<number>`cast(count(${gamesTable.id}) as int)`,
+      totalScore: sql<number>`cast(coalesce(sum(${gamePlayersTable.score}), 0) as int)`,
+    })
+    .from(usersTable)
+    .leftJoin(gamePlayersTable, eq(gamePlayersTable.userId, usersTable.id))
+    .leftJoin(
+      gamesTable,
+      and(eq(gamesTable.id, gamePlayersTable.gameId), eq(gamesTable.status, "finished"))
+    )
+    .groupBy(usersTable.id, usersTable.username, usersTable.avatarUrl)
+    .orderBy(
+      desc(sql`count(case when ${gamesTable.winnerId} = ${usersTable.id} then 1 end)`),
+      desc(sql`coalesce(sum(${gamePlayersTable.score}), 0)`)
+    )
+    .limit(25);
+
+  const leaderboard = rows.map((row, i) => ({
+    rank: i + 1,
+    userId: row.id,
+    username: row.username,
+    avatarUrl: row.avatarUrl ?? null,
+    wins: row.wins ?? 0,
+    gamesPlayed: row.gamesPlayed ?? 0,
+    winRate: row.gamesPlayed > 0 ? Math.round((row.wins / row.gamesPlayed) * 100) / 100 : 0,
+    averageScore:
+      row.gamesPlayed > 0 ? Math.round((row.totalScore / row.gamesPlayed) * 10) / 10 : 0,
+  }));
+
+  res.json(leaderboard);
 });
 
 router.get("/games/:gameId/hint", authenticate, async (req, res) => {

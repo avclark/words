@@ -21,6 +21,8 @@ export interface GameState {
   turnDeadlineAt: Date | null;
   /** @nullable */
   winnerId: string | null;
+  /** @nullable */
+  rematchGameId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

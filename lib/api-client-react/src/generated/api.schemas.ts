@@ -183,6 +183,8 @@ export interface GameState {
   turnDeadlineAt: string | null;
   /** @nullable */
   winnerId: string | null;
+  /** @nullable */
+  rematchGameId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -295,6 +297,18 @@ export interface ChatMessageInput {
      * @maxLength 500
      */
   message: string;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  userId: string;
+  username: string;
+  /** @nullable */
+  avatarUrl: string | null;
+  wins: number;
+  gamesPlayed: number;
+  winRate: number;
+  averageScore: number;
 }
 
 export interface PlayerStats {

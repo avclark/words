@@ -13,6 +13,7 @@ export const gamesTable = pgTable("games", {
   consecutivePasses: integer("consecutive_passes").notNull().default(0),
   turnDeadlineAt: timestamp("turn_deadline_at", { withTimezone: true }),
   winnerId: text("winner_id").references(() => usersTable.id),
+  rematchGameId: text("rematch_game_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

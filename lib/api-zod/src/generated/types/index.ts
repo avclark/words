@@ -29,6 +29,7 @@ export * from './gameSummaryStatus';
 export * from './healthStatus';
 export * from './inviteInfo';
 export * from './inviteLink';
+export * from './leaderboardEntry';
 export * from './moveResult';
 export * from './notificationSettings';
 export * from './notificationSettingsUpdate';
