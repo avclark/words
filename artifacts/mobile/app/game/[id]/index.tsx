@@ -86,7 +86,7 @@ export default function GameScreen() {
   });
   const passTurn = usePassTurn({ mutation: { onSuccess: () => refetch() } });
   const resignGame = useResignGame({
-    mutation: { onSuccess: () => router.replace("/(tabs)/index" as any) },
+    mutation: { onSuccess: () => router.replace("/(tabs)" as any) },
   });
   const swapTilesMutation = useSwapTiles({
     mutation: { onSuccess: () => { setSwapSelected([]); setSwapModalVisible(false); refetch(); } },
@@ -303,7 +303,7 @@ export default function GameScreen() {
       {/* Opponent Header */}
       <View style={[styles.header, { paddingTop: insets.top, backgroundColor: colors.card }]}>
         <View style={styles.headerContent}>
-          <TouchableOpacity onPress={() => router.replace("/(tabs)/index" as any)}>
+          <TouchableOpacity onPress={() => router.replace("/(tabs)" as any)}>
             <Feather name="chevron-left" size={28} color={colors.text} />
           </TouchableOpacity>
           <Avatar uri={opponent?.avatarUrl} username={opponent?.username} size={36} />
@@ -561,7 +561,7 @@ export default function GameScreen() {
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity style={{ marginTop: 16 }} onPress={() => router.replace("/(tabs)/index" as any)}>
+          <TouchableOpacity style={{ marginTop: 16 }} onPress={() => router.replace("/(tabs)" as any)}>
             <Text style={{ color: "#AAA", fontSize: 15 }}>Back to Lobby</Text>
           </TouchableOpacity>
         </View>

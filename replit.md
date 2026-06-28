@@ -77,6 +77,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 - `useGetBestWordHint` and other query hooks in TQ v5 require `queryKey` when passing options — always include it: `{ query: { enabled: false, queryKey: [...] } }`
 - Dynamic route navigation in Expo Router must use the pathname+params form: `router.push({ pathname: "/game/[id]", params: { id } } as any)` — template literals fail TypeScript
+- Navigating back to the tabs root: use `router.replace("/(tabs)" as any)` — **not** `"/(tabs)/index"` which Expo Router does not recognise and shows "this screen doesn't exist".
 - `FriendEntry` nests user data under `.user` (not at root). `GamePlayerState` has fields at root (no nesting).
 - `ChatMessageInput` body field is `message` (not `content`). `ChatMessage` uses `userId` (not `senderId`).
 - `useCreateInviteLink` mutation takes `void` — call `mutateAsync()` with no arguments.
