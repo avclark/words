@@ -1,0 +1,2 @@
+- [Scrabble app API types](scrabble-api-types.md) — correct property names for generated types; design subagent guessed wrong names
+- [Expo Router navigation](expo-router-navigation.md) — dynamic route push must use pathname+params object form, not template literal

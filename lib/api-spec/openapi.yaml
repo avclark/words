@@ -3,20 +3,34 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Scrabble game API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: users
+    description: User profiles
+  - name: friends
+    description: Friend management
+  - name: games
+    description: Game management
+  - name: chat
+    description: In-game chat
+  - name: stats
+    description: Player statistics
+  - name: notifications
+    description: Notification settings
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,7 +38,677 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # Auth
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRegistration"
+      responses:
+        "201":
+          description: Registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "409":
+          description: Username or email taken
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserLogin"
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+
+  # Users
+  /users/search:
+    get:
+      operationId: searchUsers
+      tags: [users]
+      summary: Search users by username
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserPublic"
+
+  /users/me:
+    patch:
+      operationId: updateProfile
+      tags: [users]
+      summary: Update current user profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileUpdate"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/me/push-token:
+    post:
+      operationId: registerPushToken
+      tags: [users]
+      summary: Register Expo push token
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushTokenInput"
+      responses:
+        "200":
+          description: Token registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /users/{userId}:
+    get:
+      operationId: getUserProfile
+      tags: [users]
+      summary: Get a user's public profile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPublic"
+        "404":
+          description: User not found
+
+  # Friends
+  /friends:
+    get:
+      operationId: listFriends
+      tags: [friends]
+      summary: List friends and pending requests
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Friends list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendsList"
+
+  /friends/request:
+    post:
+      operationId: sendFriendRequest
+      tags: [friends]
+      summary: Send a friend request
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FriendRequest"
+      responses:
+        "201":
+          description: Request sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Friendship"
+        "409":
+          description: Already friends or request pending
+
+  /friends/{friendshipId}:
+    patch:
+      operationId: respondFriendRequest
+      tags: [friends]
+      summary: Accept or decline a friend request
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: friendshipId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FriendResponse"
+      responses:
+        "200":
+          description: Updated friendship
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Friendship"
+    delete:
+      operationId: removeFriend
+      tags: [friends]
+      summary: Remove a friend or cancel request
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: friendshipId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /friends/invite-link:
+    post:
+      operationId: createInviteLink
+      tags: [friends]
+      summary: Create a shareable invite link
+      security:
+        - bearerAuth: []
+      responses:
+        "201":
+          description: Invite link created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteLink"
+
+  /friends/invite/{token}:
+    get:
+      operationId: getInviteInfo
+      tags: [friends]
+      summary: Get info about an invite link
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invite info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteInfo"
+        "404":
+          description: Invalid or expired invite
+
+    post:
+      operationId: acceptInviteLink
+      tags: [friends]
+      summary: Accept an invite link (add as friend)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Friend request sent or accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Friendship"
+
+  # Games
+  /games:
+    get:
+      operationId: listGames
+      tags: [games]
+      summary: List my games
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Games list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GameSummary"
+    post:
+      operationId: createGame
+      tags: [games]
+      summary: Create a new game
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GameCreate"
+      responses:
+        "201":
+          description: Game created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameState"
+
+  /games/{gameId}:
+    get:
+      operationId: getGame
+      tags: [games]
+      summary: Get full game state
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Game state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameState"
+        "404":
+          description: Game not found
+
+  /games/{gameId}/move:
+    post:
+      operationId: makeMove
+      tags: [games]
+      summary: Place tiles on the board
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TilePlacement"
+      responses:
+        "200":
+          description: Move accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MoveResult"
+        "400":
+          description: Invalid move
+
+  /games/{gameId}/swap:
+    post:
+      operationId: swapTiles
+      tags: [games]
+      summary: Swap tiles (lose turn)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TileSwap"
+      responses:
+        "200":
+          description: Tiles swapped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MoveResult"
+
+  /games/{gameId}/pass:
+    post:
+      operationId: passTurn
+      tags: [games]
+      summary: Pass turn
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Turn passed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MoveResult"
+
+  /games/{gameId}/resign:
+    post:
+      operationId: resignGame
+      tags: [games]
+      summary: Resign from game
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Resigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MoveResult"
+
+  /games/{gameId}/rematch:
+    post:
+      operationId: requestRematch
+      tags: [games]
+      summary: Request a rematch
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: New game created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameState"
+
+  /games/{gameId}/hint:
+    get:
+      operationId: getBestWordHint
+      tags: [games]
+      summary: Get best word hint for current rack
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Best word hint
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WordHint"
+
+  /games/{gameId}/word-strength:
+    post:
+      operationId: checkWordStrength
+      tags: [games]
+      summary: Check strength of a word placement
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TilePlacement"
+      responses:
+        "200":
+          description: Word strength result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WordStrength"
+
+  /games/{gameId}/moves:
+    get:
+      operationId: getGameMoves
+      tags: [games]
+      summary: Get move history for a game
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Move history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GameMove"
+
+  # Chat
+  /games/{gameId}/chat:
+    get:
+      operationId: getChatMessages
+      tags: [chat]
+      summary: Get chat messages for a game
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Chat messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatMessage"
+    post:
+      operationId: sendChatMessage
+      tags: [chat]
+      summary: Send a chat message
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatMessageInput"
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+
+  # Stats
+  /stats:
+    get:
+      operationId: getMyStats
+      tags: [stats]
+      summary: Get current user stats
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerStats"
+
+  /stats/{userId}:
+    get:
+      operationId: getUserStats
+      tags: [stats]
+      summary: Get a user's stats
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerStats"
+
+  # Notifications
+  /notifications/settings:
+    get:
+      operationId: getNotificationSettings
+      tags: [notifications]
+      summary: Get notification preferences
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationSettings"
+    patch:
+      operationId: updateNotificationSettings
+      tags: [notifications]
+      summary: Update notification preferences
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationSettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationSettings"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +718,577 @@ components:
       required:
         - status
 
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+      required:
+        - success
+
+    # Auth schemas
+    UserRegistration:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+      required:
+        - username
+        - email
+        - password
+
+    UserLogin:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"
+      required:
+        - token
+        - user
+
+    # User schemas
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        notificationTurn:
+          type: boolean
+        notificationChat:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - username
+        - email
+        - avatarUrl
+        - notificationTurn
+        - notificationChat
+        - createdAt
+
+    UserPublic:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+      required:
+        - id
+        - username
+        - avatarUrl
+
+    ProfileUpdate:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 20
+
+    PushTokenInput:
+      type: object
+      properties:
+        token:
+          type: string
+      required:
+        - token
+
+    # Friend schemas
+    FriendsList:
+      type: object
+      properties:
+        friends:
+          type: array
+          items:
+            $ref: "#/components/schemas/FriendEntry"
+        pendingReceived:
+          type: array
+          items:
+            $ref: "#/components/schemas/FriendEntry"
+        pendingSent:
+          type: array
+          items:
+            $ref: "#/components/schemas/FriendEntry"
+      required:
+        - friends
+        - pendingReceived
+        - pendingSent
+
+    FriendEntry:
+      type: object
+      properties:
+        friendshipId:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserPublic"
+        status:
+          type: string
+          enum: [accepted, pending]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - friendshipId
+        - user
+        - status
+        - createdAt
+
+    Friendship:
+      type: object
+      properties:
+        id:
+          type: string
+        requesterId:
+          type: string
+        addresseeId:
+          type: string
+        status:
+          type: string
+          enum: [pending, accepted, declined]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - requesterId
+        - addresseeId
+        - status
+        - createdAt
+
+    FriendRequest:
+      type: object
+      properties:
+        addresseeId:
+          type: string
+      required:
+        - addresseeId
+
+    FriendResponse:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [accept, decline]
+      required:
+        - action
+
+    InviteLink:
+      type: object
+      properties:
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+      required:
+        - token
+        - expiresAt
+
+    InviteInfo:
+      type: object
+      properties:
+        token:
+          type: string
+        createdBy:
+          $ref: "#/components/schemas/UserPublic"
+        expiresAt:
+          type: string
+          format: date-time
+      required:
+        - token
+        - createdBy
+        - expiresAt
+
+    # Game schemas
+    BoardCell:
+      type: object
+      properties:
+        letter:
+          type: ["string", "null"]
+        isBlank:
+          type: boolean
+        placedBy:
+          type: ["string", "null"]
+      required:
+        - letter
+        - isBlank
+        - placedBy
+
+    PlacedTile:
+      type: object
+      properties:
+        row:
+          type: integer
+          minimum: 0
+          maximum: 14
+        col:
+          type: integer
+          minimum: 0
+          maximum: 14
+        letter:
+          type: string
+        isBlank:
+          type: boolean
+      required:
+        - row
+        - col
+        - letter
+        - isBlank
+
+    GamePlayerState:
+      type: object
+      properties:
+        userId:
+          type: string
+        username:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        score:
+          type: integer
+        rackSize:
+          type: integer
+        isCurrentTurn:
+          type: boolean
+      required:
+        - userId
+        - username
+        - avatarUrl
+        - score
+        - rackSize
+        - isCurrentTurn
+
+    GameState:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [waiting, active, finished]
+        board:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: "#/components/schemas/BoardCell"
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/GamePlayerState"
+        myRack:
+          type: array
+          items:
+            type: string
+        bagSize:
+          type: integer
+        consecutivePasses:
+          type: integer
+        turnDeadlineAt:
+          type: ["string", "null"]
+          format: date-time
+        winnerId:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - status
+        - board
+        - players
+        - myRack
+        - bagSize
+        - consecutivePasses
+        - turnDeadlineAt
+        - winnerId
+        - createdAt
+        - updatedAt
+
+    GameSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [waiting, active, finished]
+        opponent:
+          $ref: "#/components/schemas/UserPublic"
+        myScore:
+          type: integer
+        opponentScore:
+          type: integer
+        isMyTurn:
+          type: boolean
+        turnDeadlineAt:
+          type: ["string", "null"]
+          format: date-time
+        winnerId:
+          type: ["string", "null"]
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - status
+        - opponent
+        - myScore
+        - opponentScore
+        - isMyTurn
+        - turnDeadlineAt
+        - winnerId
+        - updatedAt
+
+    GameCreate:
+      type: object
+      properties:
+        opponentId:
+          type: string
+      required:
+        - opponentId
+
+    TilePlacement:
+      type: object
+      properties:
+        tiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlacedTile"
+      required:
+        - tiles
+
+    TileSwap:
+      type: object
+      properties:
+        letters:
+          type: array
+          items:
+            type: string
+      required:
+        - letters
+
+    MoveResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        gameState:
+          $ref: "#/components/schemas/GameState"
+        wordsFormed:
+          type: array
+          items:
+            type: string
+        score:
+          type: integer
+        message:
+          type: ["string", "null"]
+      required:
+        - success
+        - gameState
+        - wordsFormed
+        - score
+        - message
+
+    GameMove:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        username:
+          type: string
+        moveType:
+          type: string
+          enum: [place, swap, pass, resign]
+        tilesPlaced:
+          type: ["array", "null"]
+          items:
+            $ref: "#/components/schemas/PlacedTile"
+        wordsFormed:
+          type: array
+          items:
+            type: string
+        score:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - username
+        - moveType
+        - tilesPlaced
+        - wordsFormed
+        - score
+        - createdAt
+
+    WordHint:
+      type: object
+      properties:
+        word:
+          type: ["string", "null"]
+        tiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlacedTile"
+        score:
+          type: integer
+      required:
+        - word
+        - tiles
+        - score
+
+    WordStrength:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        score:
+          type: integer
+        strength:
+          type: string
+          enum: [weak, fair, good, great, exceptional]
+        words:
+          type: array
+          items:
+            type: string
+      required:
+        - valid
+        - score
+        - strength
+        - words
+
+    # Chat schemas
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        gameId:
+          type: string
+        userId:
+          type: string
+        username:
+          type: string
+        avatarUrl:
+          type: ["string", "null"]
+        message:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - gameId
+        - userId
+        - username
+        - avatarUrl
+        - message
+        - createdAt
+
+    ChatMessageInput:
+      type: object
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 500
+      required:
+        - message
+
+    # Stats schemas
+    PlayerStats:
+      type: object
+      properties:
+        userId:
+          type: string
+        username:
+          type: string
+        gamesPlayed:
+          type: integer
+        gamesWon:
+          type: integer
+        gamesLost:
+          type: integer
+        winRate:
+          type: number
+        averageScore:
+          type: number
+        bestScore:
+          type: integer
+        bestWord:
+          type: ["string", "null"]
+        bestWordScore:
+          type: integer
+        totalPoints:
+          type: integer
+      required:
+        - userId
+        - username
+        - gamesPlayed
+        - gamesWon
+        - gamesLost
+        - winRate
+        - averageScore
+        - bestScore
+        - bestWord
+        - bestWordScore
+        - totalPoints
+
+    # Notification schemas
+    NotificationSettings:
+      type: object
+      properties:
+        notificationTurn:
+          type: boolean
+        notificationChat:
+          type: boolean
+      required:
+        - notificationTurn
+        - notificationChat
+
+    NotificationSettingsUpdate:
+      type: object
+      properties:
+        notificationTurn:
+          type: boolean
+        notificationChat:
+          type: boolean
