@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import {
   FlatList,
   StyleSheet,
@@ -6,6 +6,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,7 +20,6 @@ import {
 } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/contexts/AuthContext";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -41,12 +42,10 @@ export default function ChatScreen() {
       auth: { token },
       transports: ["websocket"],
     });
-
     socket.emit("join_game", gameId);
     socket.on("chat_message", () => {
       queryClient.invalidateQueries({ queryKey: [`/api/chat/${gameId}`] });
     });
-
     return () => {
       socket.disconnect();
     };
@@ -54,7 +53,7 @@ export default function ChatScreen() {
 
   const handleSend = () => {
     if (!text.trim()) return;
-    sendMessage.mutate({ gameId: gameId!, data: { content: text } });
+    sendMessage.mutate({ gameId: gameId!, data: { message: text.trim() } });
     setText("");
   };
 
@@ -64,13 +63,15 @@ export default function ChatScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top, backgroundColor: colors.card }]}>
+      <View
+        style={[styles.header, { paddingTop: insets.top, backgroundColor: colors.card }]}
+      >
         <View style={styles.headerContent}>
           <TouchableOpacity onPress={() => router.back()}>
             <Feather name="chevron-left" size={28} color={colors.text} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.text }]}>
-            {opponent?.user.username || "Chat"}
+            {opponent?.username ?? "Chat"}
           </Text>
           <View style={{ width: 28 }} />
         </View>
@@ -81,7 +82,7 @@ export default function ChatScreen() {
         keyExtractor={(item) => item.id}
         inverted
         renderItem={({ item }) => {
-          const isMine = item.senderId === user?.id;
+          const isMine = item.userId === user?.id;
           return (
             <View style={[styles.messageRow, isMine ? styles.myRow : styles.theirRow]}>
               <View
@@ -94,20 +95,41 @@ export default function ChatScreen() {
                   },
                 ]}
               >
-                <Text style={[styles.messageText, { color: isMine ? colors.primaryForeground : colors.text }]}>
-                  {item.content}
+                <Text
+                  style={[
+                    styles.messageText,
+                    { color: isMine ? colors.primaryForeground : colors.text },
+                  ]}
+                >
+                  {item.message}
                 </Text>
               </View>
             </View>
           );
         }}
         contentContainerStyle={styles.listContent}
+        ListEmptyComponent={
+          <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+            No messages yet. Say hello!
+          </Text>
+        }
       />
 
-      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0}>
-        <View style={[styles.inputBar, { paddingBottom: insets.bottom + 8, backgroundColor: colors.card }]}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
+      >
+        <View
+          style={[
+            styles.inputBar,
+            { paddingBottom: insets.bottom + 8, backgroundColor: colors.card },
+          ]}
+        >
           <TextInput
-            style={[styles.input, { color: colors.text, backgroundColor: colors.background }]}
+            style={[
+              styles.input,
+              { color: colors.text, backgroundColor: colors.background },
+            ]}
             placeholder="Type a message..."
             placeholderTextColor={colors.mutedForeground}
             value={text}
@@ -128,16 +150,42 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { height: 100, justifyContent: "flex-end" },
-  headerContent: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 12 },
+  header: { justifyContent: "flex-end" },
+  headerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
   headerTitle: { fontSize: 18, fontWeight: "bold" },
-  listContent: { padding: 16 },
+  listContent: { padding: 16, flexGrow: 1 },
   messageRow: { marginBottom: 12, maxWidth: "80%" },
   myRow: { alignSelf: "flex-end" },
   theirRow: { alignSelf: "flex-start" },
   bubble: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
   messageText: { fontSize: 16 },
-  inputBar: { flexDirection: "row", alignItems: "center", padding: 8, gap: 8 },
-  input: { flex: 1, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, maxHeight: 100, fontSize: 16 },
-  sendButton: { width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center" },
+  inputBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 8,
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    maxHeight: 100,
+    fontSize: 16,
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  emptyText: { textAlign: "center", marginTop: 40, fontSize: 16 },
 });
