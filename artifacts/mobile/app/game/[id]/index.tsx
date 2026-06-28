@@ -7,6 +7,7 @@ import {
   Alert,
   Modal,
   TextInput,
+  ScrollView,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,11 +20,13 @@ import {
   useResignGame,
   useSwapTiles,
   useRequestRematch,
+  useGetBestWordHint,
 } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/contexts/AuthContext";
 import { GameBoard } from "@/components/GameBoard";
 import { TileRack } from "@/components/TileRack";
+import { TileComponent } from "@/components/TileComponent";
 import { WordStrengthMeter } from "@/components/WordStrengthMeter";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { Avatar } from "@/components/Avatar";
@@ -46,26 +49,34 @@ export default function GameScreen() {
   const [pendingBlankPos, setPendingBlankPos] = useState<{ r: number; c: number } | null>(null);
   const [blankLetter, setBlankLetter] = useState("");
 
+  // Swap tiles state
+  const [swapModalVisible, setSwapModalVisible] = useState(false);
+  const [swapSelected, setSwapSelected] = useState<number[]>([]);
+
+  // Hint state
+  const [hintVisible, setHintVisible] = useState(false);
+  const [hintTiles, setHintTiles] = useState<{ row: number; col: number; letter: string; isBlank: boolean }[]>([]);
+
   const { data: game, isLoading, refetch } = useGetGame(gameId!);
   const makeMove = useMakeMove({
     mutation: {
       onSuccess: () => {
         setPlacedTiles([]);
+        setHintTiles([]);
+        setHintVisible(false);
         refetch();
       },
     },
   });
   const passTurn = usePassTurn({ mutation: { onSuccess: () => refetch() } });
   const resignGame = useResignGame({
-    mutation: {
-      onSuccess: () => {
-        refetch();
-        router.back();
-      },
-    },
+    mutation: { onSuccess: () => { refetch(); router.back(); } },
   });
-  const swapTiles = useSwapTiles({ mutation: { onSuccess: () => refetch() } });
+  const swapTilesMutation = useSwapTiles({ mutation: { onSuccess: () => { setSwapSelected([]); setSwapModalVisible(false); refetch(); } } });
   const requestRematch = useRequestRematch({ mutation: { onSuccess: () => refetch() } });
+  const { data: hint, refetch: fetchHint, isFetching: hintLoading } = useGetBestWordHint(gameId!, {
+    query: { enabled: false, queryKey: [`/api/games/${gameId}/hint`] as const },
+  });
 
   useEffect(() => {
     if (!token || !gameId) return;
@@ -77,16 +88,23 @@ export default function GameScreen() {
     socket.on("game_updated", () => {
       queryClient.invalidateQueries({ queryKey: [`/api/games/${gameId}`] });
     });
-    return () => {
-      socket.disconnect();
-    };
+    return () => { socket.disconnect(); };
   }, [gameId, token]);
+
+  // Apply hint tiles when hint data arrives
+  useEffect(() => {
+    if (hint && hint.tiles.length > 0) {
+      setHintTiles(
+        hint.tiles.map((t) => ({ row: t.row, col: t.col, letter: t.letter, isBlank: t.isBlank }))
+      );
+      setHintVisible(true);
+    }
+  }, [hint]);
 
   const opponent = useMemo(
     () => game?.players.find((p) => p.userId !== user?.id),
     [game, user]
   );
-
   const me = useMemo(
     () => game?.players.find((p) => p.userId === user?.id),
     [game, user]
@@ -103,16 +121,19 @@ export default function GameScreen() {
   }, [game, placedTiles]);
 
   const handleCellPress = (r: number, c: number) => {
-    const existingPlacedIdx = placedTiles.findIndex((t) => t.row === r && t.col === c);
-    if (existingPlacedIdx !== -1) {
-      const newPlaced = [...placedTiles];
-      newPlaced.splice(existingPlacedIdx, 1);
-      setPlacedTiles(newPlaced);
+    if (hintVisible) {
+      setHintVisible(false);
+      setHintTiles([]);
       return;
     }
-
+    const existingIdx = placedTiles.findIndex((t) => t.row === r && t.col === c);
+    if (existingIdx !== -1) {
+      const updated = [...placedTiles];
+      updated.splice(existingIdx, 1);
+      setPlacedTiles(updated);
+      return;
+    }
     if (selectedTileIndex === null || game?.board[r][c].letter) return;
-
     const letter = myRack[selectedTileIndex];
     if (letter === "?") {
       setPendingBlankPos({ r, c });
@@ -127,12 +148,7 @@ export default function GameScreen() {
     if (blankLetter.length !== 1 || !pendingBlankPos) return;
     setPlacedTiles([
       ...placedTiles,
-      {
-        row: pendingBlankPos.r,
-        col: pendingBlankPos.c,
-        letter: blankLetter.toUpperCase(),
-        isBlank: true,
-      },
+      { row: pendingBlankPos.r, col: pendingBlankPos.c, letter: blankLetter.toUpperCase(), isBlank: true },
     ]);
     setBlankModalVisible(false);
     setPendingBlankPos(null);
@@ -141,37 +157,37 @@ export default function GameScreen() {
   };
 
   const handleSubmit = () => {
-    if (placedTiles.length === 0) return;
+    const tilesToSubmit = hintVisible ? hintTiles : placedTiles;
+    if (tilesToSubmit.length === 0) return;
     makeMove.mutate({
       gameId: gameId!,
-      data: {
-        tiles: placedTiles.map((t) => ({
-          row: t.row,
-          col: t.col,
-          letter: t.letter,
-          isBlank: t.isBlank,
-        })),
-      },
+      data: { tiles: tilesToSubmit.map((t) => ({ row: t.row, col: t.col, letter: t.letter, isBlank: t.isBlank })) },
     });
   };
 
+  const handleHint = () => {
+    setMenuVisible(false);
+    fetchHint();
+  };
+
   const handleResign = () => {
-    Alert.alert("Resign", "Are you sure you want to resign?", [
+    Alert.alert("Resign", "Are you sure you want to resign this game?", [
       { text: "Cancel", style: "cancel" },
-      {
-        text: "Resign",
-        style: "destructive",
-        onPress: () => {
-          setMenuVisible(false);
-          resignGame.mutate({ gameId: gameId! });
-        },
-      },
+      { text: "Resign", style: "destructive", onPress: () => { setMenuVisible(false); resignGame.mutate({ gameId: gameId! }); } },
     ]);
+  };
+
+  const handleSwapConfirm = () => {
+    if (swapSelected.length === 0) return;
+    const letters = swapSelected.map((i) => myRack[i]);
+    swapTilesMutation.mutate({ gameId: gameId!, data: { letters } });
   };
 
   if (isLoading || !game) return <LoadingScreen />;
 
   const isMyTurn = me?.isCurrentTurn ?? false;
+  const displayedPlacedTiles = hintVisible ? hintTiles : placedTiles;
+  const canSubmit = isMyTurn && displayedPlacedTiles.length > 0;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -183,26 +199,16 @@ export default function GameScreen() {
           </TouchableOpacity>
           <Avatar uri={opponent?.avatarUrl} username={opponent?.username} size={40} />
           <View style={styles.headerInfo}>
-            <Text style={[styles.username, { color: colors.text }]}>{opponent?.username}</Text>
-            <Text style={[styles.score, { color: colors.mutedForeground }]}>
-              {opponent?.score ?? 0} pts
-            </Text>
+            <Text style={[styles.username, { color: colors.text }]}>{opponent?.username ?? "Opponent"}</Text>
+            <Text style={[styles.scoreText, { color: colors.mutedForeground }]}>{opponent?.score ?? 0} pts</Text>
           </View>
           <View style={styles.opponentRack}>
             {Array.from({ length: opponent?.rackSize ?? 0 }).map((_, i) => (
-              <View
-                key={i}
-                style={[styles.miniTile, { backgroundColor: colors.tileBackground }]}
-              />
+              <View key={i} style={[styles.miniTile, { backgroundColor: colors.tileBackground }]} />
             ))}
           </View>
           <TouchableOpacity
-            onPress={() =>
-              router.push({
-                pathname: "/game/[id]/chat",
-                params: { id: gameId },
-              } as any)
-            }
+            onPress={() => router.push({ pathname: "/game/[id]/chat", params: { id: gameId } } as any)}
           >
             <Feather name="message-circle" size={24} color={colors.primary} />
           </TouchableOpacity>
@@ -211,14 +217,29 @@ export default function GameScreen() {
 
       {/* Board */}
       <View style={styles.boardContainer}>
-        <GameBoard board={game.board} placedTiles={placedTiles} onCellPress={handleCellPress} />
+        <GameBoard board={game.board} placedTiles={displayedPlacedTiles} onCellPress={handleCellPress} />
       </View>
+
+      {/* Hint Banner */}
+      {hintVisible && hint && (
+        <TouchableOpacity
+          style={[styles.hintBanner, { backgroundColor: colors.accent }]}
+          onPress={() => { setHintVisible(false); setHintTiles([]); }}
+        >
+          <Feather name="zap" size={16} color="#FFF" />
+          <Text style={styles.hintText}>
+            Best word: <Text style={{ fontWeight: "bold" }}>{hint.word}</Text> (+{hint.score} pts) — tap to dismiss
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {/* Score Bar */}
       <View style={[styles.scoreBar, { backgroundColor: colors.secondary }]}>
         <Text style={[styles.myScoreText, { color: colors.text }]}>
-          Your Score:{" "}
-          <Text style={{ color: colors.primary }}>{me?.score ?? 0}</Text>
+          You: <Text style={{ color: colors.primary, fontWeight: "bold" }}>{me?.score ?? 0}</Text>
+        </Text>
+        <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+          Bag: {game.bagSize} tiles
         </Text>
         {isMyTurn ? (
           <Text style={{ color: colors.primary, fontWeight: "bold" }}>YOUR TURN</Text>
@@ -228,95 +249,163 @@ export default function GameScreen() {
       </View>
 
       {/* Strength Meter */}
-      <WordStrengthMeter gameId={gameId!} placedTiles={placedTiles} />
+      {!hintVisible && (
+        <WordStrengthMeter gameId={gameId!} placedTiles={placedTiles} />
+      )}
 
       {/* Tile Rack */}
       <TileRack
         tiles={myRack}
         selectedTileIndex={selectedTileIndex}
-        onTilePress={(idx) =>
-          setSelectedTileIndex(idx === selectedTileIndex ? null : idx)
-        }
+        onTilePress={(idx) => {
+          if (hintVisible) { setHintVisible(false); setHintTiles([]); }
+          setSelectedTileIndex(idx === selectedTileIndex ? null : idx);
+        }}
       />
 
       {/* Action Bar */}
-      <View style={[styles.actionBar, { paddingBottom: insets.bottom + 10 }]}>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => setPlacedTiles([])}>
-          <Feather name="rotate-ccw" size={20} color={colors.text} />
-          <Text style={[styles.actionText, { color: colors.text }]}>Recall</Text>
+      <View style={[styles.actionBar, { paddingBottom: insets.bottom + 8, backgroundColor: colors.rackBackground }]}>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => { setPlacedTiles([]); setHintVisible(false); setHintTiles([]); }}
+        >
+          <Feather name="rotate-ccw" size={20} color={colors.tileBackground} />
+          <Text style={[styles.actionText, { color: colors.tileBackground }]}>Recall</Text>
         </TouchableOpacity>
+
         <TouchableOpacity
           style={[
             styles.submitButton,
-            {
-              backgroundColor:
-                isMyTurn && placedTiles.length > 0 ? colors.primary : colors.muted,
-            },
+            { backgroundColor: canSubmit ? colors.primary : colors.muted },
           ]}
           onPress={handleSubmit}
-          disabled={!isMyTurn || placedTiles.length === 0}
+          disabled={!canSubmit || makeMove.isPending}
         >
           <Text style={[styles.submitText, { color: colors.primaryForeground }]}>
-            SUBMIT
+            {makeMove.isPending ? "..." : hintVisible ? "PLAY HINT" : "SUBMIT"}
           </Text>
         </TouchableOpacity>
+
         <TouchableOpacity style={styles.actionBtn} onPress={() => setMenuVisible(true)}>
-          <Feather name="menu" size={20} color={colors.text} />
-          <Text style={[styles.actionText, { color: colors.text }]}>More</Text>
+          <Feather name="more-horizontal" size={20} color={colors.tileBackground} />
+          <Text style={[styles.actionText, { color: colors.tileBackground }]}>More</Text>
         </TouchableOpacity>
       </View>
 
       {/* Blank Tile Modal */}
       <Modal visible={blankModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Pick a letter</Text>
+        <View style={styles.overlay}>
+          <View style={[styles.modalBox, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Choose a letter for blank tile</Text>
             <TextInput
-              style={[
-                styles.modalInput,
-                { color: colors.text, borderColor: colors.border },
-              ]}
+              style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.input }]}
               maxLength={1}
               autoCapitalize="characters"
               value={blankLetter}
               onChangeText={setBlankLetter}
               autoFocus
             />
-            <TouchableOpacity
-              style={[styles.modalButton, { backgroundColor: colors.primary }]}
-              onPress={handleBlankSubmit}
-            >
-              <Text style={{ color: colors.primaryForeground, fontWeight: "bold" }}>OK</Text>
+            <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleBlankSubmit}>
+              <Text style={{ color: colors.primaryForeground, fontWeight: "bold", fontSize: 16 }}>Place Tile</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Menu Modal */}
+      {/* Swap Tiles Modal */}
+      <Modal visible={swapModalVisible} transparent animationType="slide">
+        <View style={styles.overlay}>
+          <View style={[styles.swapBox, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Select tiles to swap</Text>
+            <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>
+              Tap tiles to select, then confirm
+            </Text>
+            <View style={styles.swapTiles}>
+              {myRack.map((letter, i) => (
+                <TouchableOpacity
+                  key={i}
+                  onPress={() =>
+                    setSwapSelected((prev) =>
+                      prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]
+                    )
+                  }
+                >
+                  <TileComponent
+                    letter={letter}
+                    isBlank={letter === "?"}
+                    size={52}
+                    isSelected={swapSelected.includes(i)}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.swapActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.muted, flex: 1 }]}
+                onPress={() => { setSwapModalVisible(false); setSwapSelected([]); }}
+              >
+                <Text style={{ color: colors.mutedForeground, fontWeight: "bold" }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalBtn,
+                  { backgroundColor: swapSelected.length > 0 ? colors.primary : colors.muted, flex: 1 },
+                ]}
+                onPress={handleSwapConfirm}
+                disabled={swapSelected.length === 0 || swapTilesMutation.isPending}
+              >
+                <Text style={{ color: colors.primaryForeground, fontWeight: "bold" }}>
+                  Swap {swapSelected.length > 0 ? `(${swapSelected.length})` : ""}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* More Menu */}
       <Modal visible={menuVisible} transparent animationType="slide">
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setMenuVisible(false)}>
+        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
           <View
-            style={[
-              styles.menuContent,
-              {
-                backgroundColor: colors.card,
-                paddingBottom: insets.bottom + 20,
-              },
-            ]}
+            style={[styles.menuSheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 20 }]}
           >
+            <View style={[styles.menuHandle, { backgroundColor: colors.border }]} />
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { setMenuVisible(false); passTurn.mutate({ gameId: gameId! }); }}
+            >
+              <Feather name="skip-forward" size={22} color={colors.text} />
+              <Text style={[styles.menuItemText, { color: colors.text }]}>Pass Turn</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => {
+                if (game.bagSize < myRack.length) {
+                  Alert.alert("Cannot Swap", "Not enough tiles in the bag to swap.");
+                  return;
+                }
                 setMenuVisible(false);
-                passTurn.mutate({ gameId: gameId! });
+                setSwapModalVisible(true);
               }}
             >
-              <Text style={[styles.menuItemText, { color: colors.text }]}>Pass Turn</Text>
+              <Feather name="refresh-cw" size={22} color={colors.text} />
+              <Text style={[styles.menuItemText, { color: colors.text }]}>Swap Tiles</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={handleResign}>
-              <Text style={[styles.menuItemText, { color: colors.destructive }]}>
-                Resign Game
+
+            <TouchableOpacity style={styles.menuItem} onPress={handleHint}>
+              <Feather name="zap" size={22} color={colors.primary} />
+              <Text style={[styles.menuItemText, { color: colors.primary }]}>
+                {hintLoading ? "Finding best word..." : "Show Best Word Hint"}
               </Text>
+            </TouchableOpacity>
+
+            <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
+
+            <TouchableOpacity style={styles.menuItem} onPress={handleResign}>
+              <Feather name="flag" size={22} color={colors.destructive} />
+              <Text style={[styles.menuItemText, { color: colors.destructive }]}>Resign Game</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -324,21 +413,22 @@ export default function GameScreen() {
 
       {/* Game Over Overlay */}
       {game.status === "finished" && (
-        <View style={[styles.gameOverOverlay, { backgroundColor: "rgba(0,0,0,0.85)" }]}>
+        <View style={[styles.gameOverOverlay, { backgroundColor: "rgba(0,0,0,0.88)" }]}>
           <Text style={[styles.gameOverTitle, { color: colors.primary }]}>GAME OVER</Text>
           <Text style={styles.winnerText}>
-            {game.winnerId === user?.id ? "🏆 YOU WON!" : "YOU LOST"}
+            {game.winnerId === user?.id ? "🏆  YOU WON!" : "You lost"}
+          </Text>
+          <Text style={[styles.finalScoreText, { color: colors.mutedForeground }]}>
+            {me?.score ?? 0} – {opponent?.score ?? 0}
           </Text>
           <TouchableOpacity
-            style={[styles.rematchButton, { backgroundColor: colors.primary }]}
+            style={[styles.rematchBtn, { backgroundColor: colors.primary }]}
             onPress={() => requestRematch.mutate({ gameId: gameId! })}
           >
-            <Text style={{ color: colors.primaryForeground, fontWeight: "bold", fontSize: 16 }}>
-              REMATCH
-            </Text>
+            <Text style={{ color: colors.primaryForeground, fontWeight: "bold", fontSize: 16 }}>REMATCH</Text>
           </TouchableOpacity>
           <TouchableOpacity style={{ marginTop: 20 }} onPress={() => router.back()}>
-            <Text style={{ color: "#FFF", fontSize: 16 }}>Back to Lobby</Text>
+            <Text style={{ color: "#FFFFFF", fontSize: 16 }}>Back to Lobby</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -359,10 +449,18 @@ const styles = StyleSheet.create({
   },
   headerInfo: { flex: 1 },
   username: { fontSize: 16, fontWeight: "bold" },
-  score: { fontSize: 12 },
+  scoreText: { fontSize: 12 },
   opponentRack: { flexDirection: "row", gap: 2 },
   miniTile: { width: 8, height: 8, borderRadius: 1 },
   boardContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  hintBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  hintText: { color: "#FFF", fontSize: 13, flex: 1 },
   scoreBar: {
     height: 40,
     flexDirection: "row",
@@ -370,58 +468,83 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16,
   },
-  myScoreText: { fontWeight: "bold" },
+  myScoreText: { fontSize: 15 },
   actionBar: {
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
+    paddingTop: 10,
     height: 80,
   },
-  actionBtn: { alignItems: "center", gap: 4 },
-  actionText: { fontSize: 10 },
-  submitButton: { paddingHorizontal: 32, paddingVertical: 14, borderRadius: 24 },
-  submitText: { fontWeight: "bold", fontSize: 16 },
-  modalOverlay: {
+  actionBtn: { alignItems: "center", gap: 4, minWidth: 56 },
+  actionText: { fontSize: 11 },
+  submitButton: {
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 24,
+    minWidth: 130,
+    alignItems: "center",
+  },
+  submitText: { fontWeight: "bold", fontSize: 15 },
+  overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
   },
-  modalContent: { width: 200, padding: 20, borderRadius: 12, alignItems: "center" },
-  modalTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 16 },
-  modalInput: {
-    width: 50,
-    height: 50,
-    borderWidth: 1,
-    borderRadius: 8,
-    textAlign: "center",
-    fontSize: 24,
-    marginBottom: 16,
-  },
-  modalButton: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
-  menuContent: {
+  modalBox: { width: 280, padding: 24, borderRadius: 16, alignItems: "center", gap: 16 },
+  swapBox: {
     position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
+    bottom: 0, left: 0, right: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    gap: 16,
   },
+  modalTitle: { fontSize: 18, fontWeight: "bold", textAlign: "center" },
+  modalSub: { fontSize: 14, textAlign: "center" },
+  modalInput: {
+    width: 60, height: 60,
+    borderWidth: 2, borderRadius: 8,
+    textAlign: "center", fontSize: 28,
+  },
+  modalBtn: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    minWidth: 100,
+  },
+  swapTiles: { flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "center" },
+  swapActions: { flexDirection: "row", gap: 12 },
+  menuSheet: {
+    position: "absolute",
+    bottom: 0, left: 0, right: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    gap: 4,
+  },
+  menuHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 12 },
   menuItem: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1E3050",
+    gap: 16,
   },
-  menuItemText: { fontSize: 18, fontWeight: "600", textAlign: "center" },
+  menuItemText: { fontSize: 17, fontWeight: "600" },
+  menuDivider: { height: 1, marginVertical: 4 },
   gameOverOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
     alignItems: "center",
     zIndex: 100,
+    gap: 8,
   },
-  gameOverTitle: { fontSize: 40, fontWeight: "900" },
-  winnerText: { color: "#FFF", fontSize: 24, fontWeight: "bold", marginTop: 10, marginBottom: 30 },
-  rematchButton: { paddingHorizontal: 40, paddingVertical: 15, borderRadius: 30 },
+  gameOverTitle: { fontSize: 42, fontWeight: "900" },
+  winnerText: { color: "#FFF", fontSize: 26, fontWeight: "bold" },
+  finalScoreText: { fontSize: 20, marginBottom: 16 },
+  rematchBtn: { paddingHorizontal: 48, paddingVertical: 16, borderRadius: 32 },
 });

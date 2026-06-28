@@ -23,10 +23,12 @@ import {
 import { useColors } from "@/hooks/useColors";
 import { Avatar } from "@/components/Avatar";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { useRouter } from "expo-router";
 
 export default function FriendsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"friends" | "pending">("friends");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -42,9 +44,7 @@ export default function FriendsScreen() {
   const createGame = useCreateGame({
     mutation: {
       onSuccess: (game) => {
-        // Navigate to game screen
-        const { router } = require("expo-router");
-        router.push({ pathname: "/game/[id]", params: { id: game.id } });
+        router.push({ pathname: "/game/[id]", params: { id: game.id } } as any);
       },
     },
   });

@@ -9,17 +9,23 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useListGames } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { GameCard } from "@/components/GameCard";
 import { LoadingScreen } from "@/components/LoadingScreen";
 
 export default function GamesScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { user } = useAuth();
   const { data: games, isLoading, refetch } = useListGames();
+
+  // Register push notifications when the user is logged in
+  usePushNotifications();
 
   const onRefresh = useCallback(() => {
     refetch();
@@ -53,8 +59,10 @@ export default function GamesScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyState}>
+            <Feather name="grid" size={48} color={colors.mutedForeground} style={{ marginBottom: 16 }} />
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>No active games</Text>
             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              No active games. Challenge a friend!
+              Challenge a friend to get started!
             </Text>
           </View>
         }
@@ -62,6 +70,7 @@ export default function GamesScreen() {
 
       <TouchableOpacity
         style={[styles.fab, { backgroundColor: colors.primary, bottom: insets.bottom + 100 }]}
+        onPress={() => router.push("/(tabs)/friends")}
       >
         <Feather name="plus" size={32} color={colors.primaryForeground} />
       </TouchableOpacity>
@@ -70,9 +79,7 @@ export default function GamesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     flexDirection: "row",
     justifyContent: "center",
@@ -81,28 +88,17 @@ const styles = StyleSheet.create({
     height: 60,
     position: "relative",
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "900",
-    letterSpacing: 2,
-  },
-  iconButton: {
-    position: "absolute",
-    right: 16,
-  },
-  listContent: {
-    padding: 16,
-  },
+  headerTitle: { fontSize: 24, fontWeight: "900", letterSpacing: 2 },
+  iconButton: { position: "absolute", right: 16 },
+  listContent: { padding: 16 },
   emptyState: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 100,
+    marginTop: 80,
   },
-  emptyText: {
-    fontSize: 16,
-    textAlign: "center",
-  },
+  emptyTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 8 },
+  emptyText: { fontSize: 16, textAlign: "center" },
   fab: {
     position: "absolute",
     right: 20,
