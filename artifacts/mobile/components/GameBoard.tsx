@@ -4,9 +4,9 @@ import { useColors } from "@/hooks/useColors";
 import { SPECIAL_SQUARES } from "@/constants/game";
 import { TileComponent } from "./TileComponent";
 
-export const CELL_SIZE = 23;
-export const CELL_MARGIN = 0.5;
-export const BOARD_PADDING = 6;
+export const CELL_SIZE = 19;
+export const CELL_MARGIN = 2;
+export const BOARD_PADDING = 8;
 
 interface GameBoardProps {
   board: any[][];
@@ -26,72 +26,84 @@ export function GameBoard({ board, placedTiles, onCellPress, dropHighlight }: Ga
     return null;
   };
 
-  const getSquareColor = (type: string | null, isHighlighted: boolean) => {
-    if (isHighlighted) return colors.primary + "99";
+  const getSquareStyle = (type: string | null, isHighlighted: boolean) => {
+    if (isHighlighted) return { backgroundColor: colors.primary + "AA", borderWidth: 0 };
     switch (type) {
-      case "TWS": return colors.twsColor;
-      case "DWS": return colors.dwsColor;
-      case "TLS": return colors.tlsColor;
-      case "DLS": return colors.dlsColor;
-      default: return colors.tileEmpty;
+      case "TWS": return { backgroundColor: colors.twsColor, borderWidth: 0 };
+      case "DWS": return { backgroundColor: colors.dwsColor, borderWidth: 0 };
+      case "TLS": return { backgroundColor: colors.tlsColor, borderWidth: 0 };
+      case "DLS": return { backgroundColor: colors.dlsColor, borderWidth: 0 };
+      default: return {
+        backgroundColor: colors.tileEmpty,
+        borderWidth: 1,
+        borderColor: colors.tileEmptyBorder,
+      };
     }
   };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.boardBackground }]}>
-      <View style={styles.grid}>
-        {board.map((row, r) => (
-          <View key={r} style={styles.row}>
-            {row.map((cell, c) => {
-              const type = getSquareType(r, c);
-              const placed = placedTiles.find(t => t.row === r && t.col === c);
-              const isHighlighted = dropHighlight?.row === r && dropHighlight?.col === c;
+      {board.map((row, r) => (
+        <View key={r} style={styles.row}>
+          {row.map((cell, c) => {
+            const type = getSquareType(r, c);
+            const placed = placedTiles.find(t => t.row === r && t.col === c);
+            const isHighlighted = dropHighlight?.row === r && dropHighlight?.col === c;
+            const squareStyle = getSquareStyle(type, isHighlighted);
 
-              return (
-                <TouchableOpacity
-                  key={c}
-                  style={[styles.cell, { backgroundColor: getSquareColor(type, isHighlighted) }]}
-                  onPress={() => onCellPress(r, c)}
-                  activeOpacity={0.7}
-                >
-                  {cell.letter ? (
-                    <TileComponent letter={cell.letter} isBlank={cell.isBlank} size={CELL_SIZE - 2} />
-                  ) : placed ? (
-                    <TileComponent letter={placed.letter} isBlank={placed.isBlank} size={CELL_SIZE - 2} isPlaced />
-                  ) : (
-                    <View style={styles.bonusLabelContainer}>
-                      {type && <Text style={styles.bonusLabel}>{type}</Text>}
-                      {r === 7 && c === 7 && !type && <Text style={styles.star}>★</Text>}
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        ))}
-      </View>
+            return (
+              <TouchableOpacity
+                key={c}
+                style={[styles.cell, squareStyle]}
+                onPress={() => onCellPress(r, c)}
+                activeOpacity={0.7}
+              >
+                {cell.letter ? (
+                  <TileComponent letter={cell.letter} isBlank={cell.isBlank} size={CELL_SIZE - 3} />
+                ) : placed ? (
+                  <TileComponent letter={placed.letter} isBlank={placed.isBlank} size={CELL_SIZE - 3} isPlaced />
+                ) : (
+                  <>
+                    {type && (
+                      <Text style={styles.bonusLabel}>{type}</Text>
+                    )}
+                    {r === 7 && c === 7 && !type && (
+                      <Text style={[styles.star, { color: colors.centerStar }]}>★</Text>
+                    )}
+                  </>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: BOARD_PADDING / 2,
+    padding: BOARD_PADDING,
     alignSelf: "center",
-    borderRadius: 4,
+    borderRadius: 8,
   },
-  grid: { padding: BOARD_PADDING / 2 },
   row: { flexDirection: "row" },
   cell: {
     width: CELL_SIZE,
     height: CELL_SIZE,
     margin: CELL_MARGIN,
+    borderRadius: 5,
     justifyContent: "center",
     alignItems: "center",
-    borderRadius: 2,
   },
-  bonusLabelContainer: { justifyContent: "center", alignItems: "center" },
-  bonusLabel: { fontSize: 5, fontWeight: "bold", color: "#FFF" },
-  starContainer: { justifyContent: "center", alignItems: "center" },
-  star: { fontSize: 11, color: "#DC2626" },
+  bonusLabel: {
+    fontSize: 4.5,
+    fontWeight: "bold",
+    color: "#FFFFFF",
+    letterSpacing: 0.2,
+  },
+  star: {
+    fontSize: 10,
+    fontWeight: "bold",
+  },
 });

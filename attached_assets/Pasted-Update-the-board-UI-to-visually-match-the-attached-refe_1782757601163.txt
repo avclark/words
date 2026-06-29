@@ -1,0 +1,103 @@
+Update the board UI to visually match the attached reference.
+
+Use these colors exactly:
+
+Board background
+#FFFFFF
+
+Normal square
+fill: #E9E9F1
+border: #D9D9E3
+
+Double Letter
+fill: #92CCFC
+
+Triple Letter
+fill: #1577B6
+
+Double Word
+fill: #FF8C71
+
+Triple Word
+fill: #ED1C78
+
+Letter tile
+fill: #F0EAC1
+
+Letter tile shadow
+#D6C98D
+
+Special/high-value tile highlight
+#F4CF4A
+
+Letter text
+#111111
+
+Bonus square text
+#FFFFFF
+
+Blue badge
+#1F56F0
+
+LAYOUT
+
+The board should feel airy and spacious.
+
+• Every square must be an independent rounded rectangle.
+• Do NOT allow adjacent squares to touch.
+• Leave a consistent 3–4px white gutter between every square.
+• The gutters should remain visible at every screen size.
+• Each square should have a 10–12px corner radius.
+• All rows and columns must align perfectly with identical spacing.
+• The board itself should have approximately 12–16px padding around the outside before reaching the screen edge.
+
+NORMAL SQUARES
+
+• Fill: #E9E9F1
+• Border: 1px solid #D9D9E3
+• No shadows.
+
+BONUS SQUARES
+
+• Same size and radius as normal squares.
+• No border.
+• Fill the entire square with the assigned color.
+• Labels centered both horizontally and vertically.
+
+TILES
+
+• Tiles should NOT fill the entire square.
+• Leave approximately 4px of visible board around every tile.
+• Tiles should be centered inside each square.
+• Border radius: 10px.
+• Soft shadow:
+    0 2px 6px rgba(0,0,0,.14)
+
+BOARD
+
+• The board background should be pure white (#FFFFFF).
+• There should never be visible grid lines.
+• The white gutters between cells define the grid instead.
+
+ANIMATION
+
+When a tile is placed:
+
+• Scale from 0.9 → 1.0
+• Fade in over 120ms
+• Shadow briefly increases then returns.
+
+When hovering (desktop):
+
+• Lift tile 2px
+• Slightly increase shadow.
+
+DO NOT
+
+• Use gradients on the board.
+• Use skeuomorphic wood textures.
+• Use thick borders.
+• Use harsh shadows.
+• Use serif fonts.
+
+The final result should look clean, bright, minimal, and closely match the attached screenshot while remaining responsive.
