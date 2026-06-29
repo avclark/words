@@ -6,7 +6,6 @@ import {
   Text,
   TouchableOpacity,
   View,
-  Alert,
   Modal,
   TextInput,
   ScrollView,
@@ -61,6 +60,7 @@ export default function GameScreen() {
   const [hintTiles, setHintTiles] = useState<PlacedTile[]>([]);
   const [emojiPanelVisible, setEmojiPanelVisible] = useState(false);
   const [floatingEmoji, setFloatingEmoji] = useState<string | null>(null);
+  const [resignConfirmVisible, setResignConfirmVisible] = useState(false);
 
   // Drag-and-drop state
   const boardRef = useRef<View>(null);
@@ -266,10 +266,8 @@ export default function GameScreen() {
   const handleHint = () => { setMenuVisible(false); fetchHint(); };
 
   const handleResign = () => {
-    Alert.alert("Resign", "Are you sure you want to resign?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Resign", style: "destructive", onPress: () => { setMenuVisible(false); resignGame.mutate({ gameId: gameId! }); } },
-    ]);
+    setMenuVisible(false);
+    setResignConfirmVisible(true);
   };
 
   const handleSwapConfirm = () => {
@@ -497,6 +495,35 @@ export default function GameScreen() {
         </View>
       </Modal>
 
+      {/* Resign Confirmation Modal */}
+      <Modal visible={resignConfirmVisible} transparent animationType="fade">
+        <View style={styles.overlay}>
+          <View style={[styles.modalBox, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Resign Game?</Text>
+            <Text style={[styles.modalSub, { color: colors.mutedForeground, textAlign: "center", marginBottom: 20 }]}>
+              Your opponent will be declared the winner.
+            </Text>
+            <View style={styles.swapActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.muted, flex: 1 }]}
+                onPress={() => setResignConfirmVisible(false)}
+              >
+                <Text style={{ color: colors.mutedForeground, fontWeight: "bold" }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.destructive, flex: 1 }]}
+                onPress={() => { setResignConfirmVisible(false); resignGame.mutate({ gameId: gameId! }); }}
+                disabled={resignGame.isPending}
+              >
+                <Text style={{ color: "#FFF", fontWeight: "bold" }}>
+                  {resignGame.isPending ? "Resigning..." : "Resign"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* More Menu */}
       <Modal visible={menuVisible} transparent animationType="slide">
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
@@ -507,14 +534,17 @@ export default function GameScreen() {
               <Text style={[styles.menuItemText, { color: colors.text }]}>Pass Turn</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.menuItem}
+              style={[styles.menuItem, game.bagSize < myRack.length && { opacity: 0.4 }]}
               onPress={() => {
-                if (game.bagSize < myRack.length) { Alert.alert("Cannot Swap", "Not enough tiles in bag."); return; }
+                if (game.bagSize < myRack.length) return;
                 setMenuVisible(false); setSwapModalVisible(true);
               }}
+              disabled={game.bagSize < myRack.length}
             >
               <Feather name="refresh-cw" size={22} color={colors.text} />
-              <Text style={[styles.menuItemText, { color: colors.text }]}>Swap Tiles</Text>
+              <Text style={[styles.menuItemText, { color: colors.text }]}>
+                Swap Tiles{game.bagSize < myRack.length ? " (bag empty)" : ""}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.menuItem} onPress={handleHint}>
               <Feather name="zap" size={22} color={colors.primary} />
