@@ -33,16 +33,16 @@ const colors = {
     border: "#2A3F5C",
     input: "#1E3050",
     // Custom game-specific tokens
-    tileBackground: "#E8B84B",     // wooden tile tan
-    tileForeground: "#2D1A00",     // dark brown tile text
-    tileEmpty: "#1A6B2A",          // board cell green
-    boardBackground: "#145A20",    // board dark green
-    twsColor: "#C0392B",           // triple word red
-    dwsColor: "#E74C3C",           // double word pink/light red
-    tlsColor: "#1A5276",           // triple letter dark blue
-    dlsColor: "#2E86C1",           // double letter blue
-    centerStar: "#E74C3C",         // center star red
-    rackBackground: "#2D1A00",     // rack dark brown
+    tileBackground: "#E8B84B",     // wooden tile gold
+    tileForeground: "#2D1A00",     // dark tile text
+    tileEmpty: "#D9CCB0",          // board regular cell (cream)
+    boardBackground: "#C8B98A",    // board border/background (warm tan)
+    twsColor: "#DC2626",           // triple word - red
+    dwsColor: "#F87171",           // double word - light red/pink
+    tlsColor: "#1D4ED8",           // triple letter - dark blue
+    dlsColor: "#93C5FD",           // double letter - light blue
+    centerStar: "#DC2626",         // center star
+    rackBackground: "#162032",     // rack - matches card navy
   },
   dark: {
     text: "#FFFFFF",
@@ -65,14 +65,14 @@ const colors = {
     input: "#1E3050",
     tileBackground: "#E8B84B",
     tileForeground: "#2D1A00",
-    tileEmpty: "#1A6B2A",
-    boardBackground: "#145A20",
-    twsColor: "#C0392B",
-    dwsColor: "#E74C3C",
-    tlsColor: "#1A5276",
-    dlsColor: "#2E86C1",
-    centerStar: "#E74C3C",
-    rackBackground: "#2D1A00",
+    tileEmpty: "#D9CCB0",
+    boardBackground: "#C8B98A",
+    twsColor: "#DC2626",
+    dwsColor: "#F87171",
+    tlsColor: "#1D4ED8",
+    dlsColor: "#93C5FD",
+    centerStar: "#DC2626",
+    rackBackground: "#162032",
   },
   radius: 6,
 };

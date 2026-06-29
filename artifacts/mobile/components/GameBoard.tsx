@@ -92,5 +92,6 @@ const styles = StyleSheet.create({
   },
   bonusLabelContainer: { justifyContent: "center", alignItems: "center" },
   bonusLabel: { fontSize: 5, fontWeight: "bold", color: "#FFF" },
-  star: { fontSize: 11, color: "#FFF" },
+  starContainer: { justifyContent: "center", alignItems: "center" },
+  star: { fontSize: 11, color: "#DC2626" },
 });
