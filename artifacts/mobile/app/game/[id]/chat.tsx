@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   FlatList,
   StyleSheet,
@@ -31,10 +31,16 @@ export default function ChatScreen() {
   const { token, user } = useAuth();
   const queryClient = useQueryClient();
   const [text, setText] = useState("");
+  const flatListRef = useRef<FlatList>(null);
 
   const { data: messages, isLoading } = useGetChatMessages(gameId!);
   const { data: game } = useGetGame(gameId!);
   const sendMessage = useSendChatMessage();
+
+  // Scroll to bottom when messages update
+  const scrollToBottom = () => {
+    flatListRef.current?.scrollToEnd({ animated: true });
+  };
 
   useEffect(() => {
     if (!token || !gameId) return;
@@ -53,13 +59,18 @@ export default function ChatScreen() {
 
   const handleSend = () => {
     if (!text.trim()) return;
-    sendMessage.mutate({ gameId: gameId!, data: { message: text.trim() } });
+    sendMessage.mutate(
+      { gameId: gameId!, data: { message: text.trim() } },
+      { onSuccess: () => setTimeout(scrollToBottom, 100) }
+    );
     setText("");
   };
 
   if (isLoading) return <LoadingScreen />;
 
   const opponent = game?.players.find((p) => p.userId !== user?.id);
+  // Oldest first so newest appears at the bottom — no inverted needed
+  const orderedMessages = [...(messages ?? [])];
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -78,9 +89,9 @@ export default function ChatScreen() {
       </View>
 
       <FlatList
-        data={messages}
+        ref={flatListRef}
+        data={orderedMessages}
         keyExtractor={(item) => item.id}
-        inverted
         renderItem={({ item }) => {
           const isMine = item.userId === user?.id;
           return (
@@ -108,6 +119,8 @@ export default function ChatScreen() {
           );
         }}
         contentContainerStyle={styles.listContent}
+        onContentSizeChange={scrollToBottom}
+        onLayout={scrollToBottom}
         ListEmptyComponent={
           <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
             No messages yet. Say hello!

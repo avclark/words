@@ -23,12 +23,14 @@ export default function GamesScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { data: games, isLoading, refetch } = useListGames();
+  const [refreshing, setRefreshing] = useState(false);
 
   // Register push notifications when the user is logged in
   usePushNotifications();
 
-  const onRefresh = useCallback(() => {
-    refetch();
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try { await refetch(); } finally { setRefreshing(false); }
   }, [refetch]);
 
   if (isLoading) return <LoadingScreen />;

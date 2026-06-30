@@ -34,6 +34,7 @@ import { Avatar } from "@/components/Avatar";
 import { useQueryClient } from "@tanstack/react-query";
 
 const CELL_TOTAL = CELL_SIZE + CELL_MARGIN * 2;
+const BOARD_SIZE = 15 * CELL_TOTAL + 2 * BOARD_PADDING;
 
 const QUICK_EMOJIS = ["👍", "🤩", "😱", "😈", "🤔", "😅", "🎉", "💀"];
 
@@ -129,13 +130,8 @@ export default function GameScreen() {
     setTimeout(() => setFloatingEmoji(null), 2000);
   };
 
-  // Hints
-  useEffect(() => {
-    if (hint && hint.tiles.length > 0) {
-      setHintTiles(hint.tiles.map(t => ({ row: t.row, col: t.col, letter: t.letter, isBlank: t.isBlank })));
-      setHintVisible(true);
-    }
-  }, [hint]);
+  // No hint useEffect — handleHint uses the fetchHint() return value directly so
+  // re-tapping after recall always triggers a fresh visual update.
 
   const opponent = useMemo(() => game?.players.find(p => p.userId !== user?.id), [game, user]);
   const me = useMemo(() => game?.players.find(p => p.userId === user?.id), [game, user]);
@@ -152,10 +148,15 @@ export default function GameScreen() {
 
   useEffect(() => { myRackRef.current = myRack; }, [myRack]);
 
-  // Board layout measurement
+  // Board layout measurement — account for centering offset.
+  // boardContainer is flex:1; the GameBoard is a fixed-size child centered inside it.
+  // measure() gives the container's screen-absolute top-left, so we shift by the centering gap.
   const onBoardLayout = useCallback(() => {
-    boardRef.current?.measure((_, __, ___, ____, pageX, pageY) => {
-      boardLayout.current = { x: pageX, y: pageY };
+    boardRef.current?.measure((_, __, containerW, containerH, pageX, pageY) => {
+      boardLayout.current = {
+        x: pageX + Math.max(0, (containerW - BOARD_SIZE) / 2),
+        y: pageY + Math.max(0, (containerH - BOARD_SIZE) / 2),
+      };
     });
   }, []);
 
@@ -263,7 +264,18 @@ export default function GameScreen() {
     });
   };
 
-  const handleHint = () => { setMenuVisible(false); fetchHint(); };
+  const handleHint = async () => {
+    setMenuVisible(false);
+    setHintVisible(false);
+    setHintTiles([]);
+    // Force a fresh server request each time by removing the cached result first
+    queryClient.removeQueries({ queryKey: [`/api/games/${gameId}/hint`] });
+    const result = await fetchHint();
+    if (result.data && result.data.tiles.length > 0) {
+      setHintTiles(result.data.tiles.map(t => ({ row: t.row, col: t.col, letter: t.letter, isBlank: t.isBlank })));
+      setHintVisible(true);
+    }
+  };
 
   const handleResign = () => {
     setMenuVisible(false);
@@ -417,7 +429,7 @@ export default function GameScreen() {
           onPress={handleSubmit}
           disabled={!canSubmit || makeMove.isPending}
         >
-          <Text style={[styles.submitText, { color: colors.primaryForeground }]}>
+          <Text style={[styles.submitText, { color: canSubmit ? colors.primaryForeground : colors.mutedForeground }]}>
             {makeMove.isPending ? "..." : hintVisible ? "PLAY HINT" : "SUBMIT"}
           </Text>
         </TouchableOpacity>
