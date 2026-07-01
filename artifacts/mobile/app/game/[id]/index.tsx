@@ -175,6 +175,8 @@ export default function GameScreen() {
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8,
+        // Capture-phase variant overrides the active responder (TouchableOpacity) during a drag
+        onMoveShouldSetPanResponderCapture: (_, g) => Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8,
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: (evt) => {
           if (hintVisibleRef.current) { setHintVisible(false); setHintTiles([]); }
