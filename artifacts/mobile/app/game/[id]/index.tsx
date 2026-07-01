@@ -76,6 +76,7 @@ export default function GameScreen() {
   const gameRef = useRef<any>(null);
   const myRackRef = useRef<string[]>([]);
   const hintVisibleRef = useRef(hintVisible);
+  const isDraggingRef = useRef(false); // tracks live drag state (setState is async, ref is sync)
   useEffect(() => { placedTilesRef.current = placedTiles; }, [placedTiles]);
   useEffect(() => { hintVisibleRef.current = hintVisible; }, [hintVisible]);
 
@@ -167,57 +168,82 @@ export default function GameScreen() {
     return null;
   }, []);
 
-  // Create PanResponders for rack tiles — DRAG ONLY.
-  // Tap-to-select is handled by TouchableOpacity onPress (more reliable on native iOS).
-  // PanResponder only activates once the user moves > 8px (drag gesture).
+  // PanResponder for rack tiles — handles both tap and drag from a plain View.
+  //
+  // Why not TouchableOpacity + PanResponder?
+  //   On native iOS, TouchableOpacity owns the touch after onStartShouldSetResponder.
+  //   The PanResponder's onMoveShouldSetPanResponderCapture cannot steal it reliably.
+  //
+  // Strategy:
+  //   • onStartShouldSetPanResponder: always true — PanResponder claims every touch.
+  //   • onPanResponderGrant: init position, but DON'T set isDragging yet (no floating tile).
+  //   • onPanResponderMove: once gestureState.dx/dy > 8, start the drag via isDraggingRef.
+  //   • onPanResponderRelease: if isDraggingRef → drop tile; otherwise → tap-select.
+  //   • isDraggingRef is a plain ref so PanResponder handlers always see the live value
+  //     (useState is async and would be stale inside a memoised closure).
   const panResponders = useMemo(() => {
     return myRackRef.current.map((letter, tileIndex) =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8,
-        // Capture-phase variant overrides the active responder (TouchableOpacity) during a drag
-        onMoveShouldSetPanResponderCapture: (_, g) => Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8,
+        onStartShouldSetPanResponder: () => true,
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: (evt) => {
-          if (hintVisibleRef.current) { setHintVisible(false); setHintTiles([]); }
+          isDraggingRef.current = false;
           const { pageX, pageY } = evt.nativeEvent;
+          // Pre-position the animated tile so it's ready the moment dragging begins
           dragAnim.setValue({ x: pageX - 22, y: pageY - 44 });
-          setDragLetter(myRackRef.current[tileIndex] ?? letter);
-          setIsDragging(true);
-          setDropHighlight(null);
         },
-        onPanResponderMove: (evt) => {
+        onPanResponderMove: (evt, gestureState) => {
           const { pageX, pageY } = evt.nativeEvent;
-          dragAnim.setValue({ x: pageX - 22, y: pageY - 44 });
-          const cell = calcDropCell(pageX, pageY);
-          const g = gameRef.current;
-          if (cell && g && !g.board[cell.row][cell.col].letter &&
-            !placedTilesRef.current.find(t => t.row === cell.row && t.col === cell.col)) {
-            setDropHighlight(cell);
-          } else {
-            setDropHighlight(null);
+          // Activate drag once movement crosses the threshold
+          if (!isDraggingRef.current && (Math.abs(gestureState.dx) > 8 || Math.abs(gestureState.dy) > 8)) {
+            isDraggingRef.current = true;
+            setIsDragging(true);
+            setDragLetter(myRackRef.current[tileIndex] ?? letter);
+            if (hintVisibleRef.current) { setHintVisible(false); setHintTiles([]); }
+          }
+          if (isDraggingRef.current) {
+            dragAnim.setValue({ x: pageX - 22, y: pageY - 44 });
+            const cell = calcDropCell(pageX, pageY);
+            const g = gameRef.current;
+            if (cell && g && !g.board[cell.row][cell.col].letter &&
+              !placedTilesRef.current.find(t => t.row === cell.row && t.col === cell.col)) {
+              setDropHighlight(cell);
+            } else {
+              setDropHighlight(null);
+            }
           }
         },
         onPanResponderRelease: (evt) => {
-          const { pageX, pageY } = evt.nativeEvent;
-          const cell = calcDropCell(pageX, pageY);
-          const g = gameRef.current;
-          const rack = myRackRef.current;
-          const ltr = rack[tileIndex] ?? letter;
-          if (cell && g && !g.board[cell.row][cell.col].letter &&
-            !placedTilesRef.current.find(t => t.row === cell.row && t.col === cell.col)) {
-            if (ltr === "?") {
-              setPendingBlankPos({ r: cell.row, c: cell.col });
-              setPendingDragTileIndex(tileIndex);
-              setBlankModalVisible(true);
-            } else {
-              setPlacedTiles(prev => [...prev, { row: cell.row, col: cell.col, letter: ltr, isBlank: false }]);
+          if (isDraggingRef.current) {
+            // Drop: place tile on board
+            const { pageX, pageY } = evt.nativeEvent;
+            const cell = calcDropCell(pageX, pageY);
+            const g = gameRef.current;
+            const ltr = myRackRef.current[tileIndex] ?? letter;
+            if (cell && g && !g.board[cell.row][cell.col].letter &&
+              !placedTilesRef.current.find(t => t.row === cell.row && t.col === cell.col)) {
+              if (ltr === "?") {
+                setPendingBlankPos({ r: cell.row, c: cell.col });
+                setPendingDragTileIndex(tileIndex);
+                setBlankModalVisible(true);
+              } else {
+                setPlacedTiles(prev => [...prev, { row: cell.row, col: cell.col, letter: ltr, isBlank: false }]);
+              }
             }
+          } else {
+            // Tap: toggle tile selection
+            if (hintVisibleRef.current) { setHintVisible(false); setHintTiles([]); }
+            setSelectedTileIndex(prev => prev === tileIndex ? null : tileIndex);
           }
+          isDraggingRef.current = false;
           setIsDragging(false);
           setDropHighlight(null);
         },
-        onPanResponderTerminate: () => { setIsDragging(false); setDropHighlight(null); },
+        onPanResponderTerminate: () => {
+          isDraggingRef.current = false;
+          setIsDragging(false);
+          setDropHighlight(null);
+        },
       })
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -400,17 +426,12 @@ export default function GameScreen() {
       {/* Word Strength Meter */}
       {!hintVisible && <WordStrengthMeter gameId={gameId!} placedTiles={placedTiles} />}
 
-      {/* Tile Rack — tap to select, drag to place */}
+      {/* Tile Rack — PanResponder handles both tap (short press) and drag (move > 8px) */}
       <View style={[styles.rack, { backgroundColor: colors.rackBackground }]}>
         {myRack.map((letter, index) => (
-          <TouchableOpacity
+          <View
             key={`${index}-${letter}`}
             {...(panResponders[index]?.panHandlers ?? {})}
-            onPress={() => {
-              if (hintVisible) { setHintVisible(false); setHintTiles([]); }
-              setSelectedTileIndex(prev => prev === index ? null : index);
-            }}
-            activeOpacity={0.75}
           >
             <View style={[styles.tileWrapper, selectedTileIndex === index && styles.tileSelected]}>
               <TileComponent
@@ -420,7 +441,7 @@ export default function GameScreen() {
                 size={44}
               />
             </View>
-          </TouchableOpacity>
+          </View>
         ))}
       </View>
 
