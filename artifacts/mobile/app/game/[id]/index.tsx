@@ -167,12 +167,15 @@ export default function GameScreen() {
     return null;
   }, []);
 
-  // Create PanResponders for rack tiles (recreated when rack changes)
+  // Create PanResponders for rack tiles — DRAG ONLY.
+  // Tap-to-select is handled by TouchableOpacity onPress (more reliable on native iOS).
+  // PanResponder only activates once the user moves > 8px (drag gesture).
   const panResponders = useMemo(() => {
     return myRackRef.current.map((letter, tileIndex) =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6,
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8 || Math.abs(g.dy) > 8,
+        onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: (evt) => {
           if (hintVisibleRef.current) { setHintVisible(false); setHintTiles([]); }
           const { pageX, pageY } = evt.nativeEvent;
@@ -208,9 +211,6 @@ export default function GameScreen() {
             } else {
               setPlacedTiles(prev => [...prev, { row: cell.row, col: cell.col, letter: ltr, isBlank: false }]);
             }
-          } else {
-            // Treat as tap-select if not dragged far
-            setSelectedTileIndex(prev => prev === tileIndex ? null : tileIndex);
           }
           setIsDragging(false);
           setDropHighlight(null);
@@ -398,10 +398,18 @@ export default function GameScreen() {
       {/* Word Strength Meter */}
       {!hintVisible && <WordStrengthMeter gameId={gameId!} placedTiles={placedTiles} />}
 
-      {/* Tile Rack — drag-and-drop + tap */}
+      {/* Tile Rack — tap to select, drag to place */}
       <View style={[styles.rack, { backgroundColor: colors.rackBackground }]}>
         {myRack.map((letter, index) => (
-          <View key={`${index}-${letter}`} {...panResponders[index]?.panHandlers}>
+          <TouchableOpacity
+            key={`${index}-${letter}`}
+            {...(panResponders[index]?.panHandlers ?? {})}
+            onPress={() => {
+              if (hintVisible) { setHintVisible(false); setHintTiles([]); }
+              setSelectedTileIndex(prev => prev === index ? null : index);
+            }}
+            activeOpacity={0.75}
+          >
             <View style={[styles.tileWrapper, selectedTileIndex === index && styles.tileSelected]}>
               <TileComponent
                 letter={letter === "?" ? "?" : letter}
@@ -410,7 +418,7 @@ export default function GameScreen() {
                 size={44}
               />
             </View>
-          </View>
+          </TouchableOpacity>
         ))}
       </View>
 
@@ -658,14 +666,14 @@ const styles = StyleSheet.create({
   tileSelected: { opacity: 0.6 },
   actionBar: {
     flexDirection: "row", justifyContent: "space-around", alignItems: "center",
-    paddingHorizontal: 12, paddingTop: 8, height: 72,
+    paddingHorizontal: 12, paddingTop: 12,
   },
   actionBtn: { alignItems: "center", gap: 3, minWidth: 52 },
   actionText: { fontSize: 10 },
   submitButton: {
-    paddingHorizontal: 26, paddingVertical: 12, borderRadius: 22, minWidth: 120, alignItems: "center",
+    paddingHorizontal: 28, paddingVertical: 14, borderRadius: 24, minWidth: 130, alignItems: "center",
   },
-  submitText: { fontWeight: "bold", fontSize: 14 },
+  submitText: { fontWeight: "bold", fontSize: 15 },
   floatingTile: { position: "absolute", zIndex: 999 },
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" },
   modalBox: { width: 280, padding: 24, borderRadius: 16, alignItems: "center", gap: 16 },

@@ -22,7 +22,7 @@ export default function GamesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
-  const { data: games, isLoading, refetch } = useListGames();
+  const { data: games, isLoading, refetch } = useListGames({ query: { refetchInterval: 30_000, queryKey: ["/api/games"] } });
   const [refreshing, setRefreshing] = useState(false);
 
   // Register push notifications when the user is logged in

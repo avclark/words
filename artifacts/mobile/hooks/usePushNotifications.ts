@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
+import Constants from "expo-constants";
 import { useAuth } from "@/contexts/AuthContext";
 
 Notifications.setNotificationHandler({
@@ -16,22 +17,24 @@ Notifications.setNotificationHandler({
 async function registerForPushNotificationsAsync(): Promise<string | null> {
   if (Platform.OS === "web") return null;
 
+  // Expo Go does not support getExpoPushTokenAsync without a projectId from EAS.
+  // Skip silently — the app functions fully without push tokens.
+  if (Constants.appOwnership === "expo") return null;
+
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let finalStatus = existingStatus;
+
+  if (existingStatus !== "granted") {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+
+  if (finalStatus !== "granted") return null;
+
   try {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-
-    if (existingStatus !== "granted") {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-
-    if (finalStatus !== "granted") return null;
-
     const tokenData = await Notifications.getExpoPushTokenAsync();
     return tokenData.data;
   } catch {
-    // Non-critical — Expo Go requires a projectId in bare workflow.
-    // App works fine without push notifications.
     return null;
   }
 }

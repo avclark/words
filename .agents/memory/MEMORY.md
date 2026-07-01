@@ -1,2 +1,7 @@
 - [Scrabble app API types](scrabble-api-types.md) — correct property names for generated types; design subagent guessed wrong names
 - [Expo Router navigation](expo-router-navigation.md) — dynamic route push must use pathname+params object form, not template literal
+- [TQ v5 queryKey requirement](tq-querykey.md) — every hook call that passes `{ query: {...} }` options MUST include `queryKey` or TypeScript errors on native Orval-generated hooks
+- [Safe area + fixed height clash](safe-area-fixed-height.md) — never use fixed `height` on a View that also applies `paddingBottom: insets.bottom` — the inset eats into the fixed height and clips content on iPhone
+- [PanResponder vs TouchableOpacity on iOS](panresponder-native.md) — `onStartShouldSetPanResponder: () => true` blocks TouchableOpacity on native iOS; use `onMoveShouldSetPanResponder` threshold for drags and TouchableOpacity onPress for taps
+- [FlatList inverted on iOS](flatlist-inverted.md) — `inverted` prop applies scaleY(-1) which flips ListEmptyComponent and text upside-down on native; use ref + scrollToEnd instead
+- [Expo Go push notifications](expo-go-push.md) — `getExpoPushTokenAsync` throws in Expo Go (no EAS projectId); check `Constants.appOwnership === "expo"` before calling and skip silently
