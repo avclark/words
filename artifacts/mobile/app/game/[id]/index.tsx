@@ -1,19 +1,17 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
-  Animated,
-  PanResponder,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
   Modal,
   TextInput,
-  ScrollView,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { io } from "socket.io-client";
+import { useSharedValue } from "react-native-reanimated";
 import {
   useGetGame,
   useMakeMove,
@@ -26,15 +24,13 @@ import {
 } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/contexts/AuthContext";
-import { GameBoard, CELL_SIZE, CELL_MARGIN, BOARD_PADDING } from "@/components/GameBoard";
+import { GameBoard } from "@/components/GameBoard";
 import { TileComponent } from "@/components/TileComponent";
+import { TileRack, FloatingDragTile, RackDragShared } from "@/components/TileRack";
 import { WordStrengthMeter } from "@/components/WordStrengthMeter";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { Avatar } from "@/components/Avatar";
 import { useQueryClient } from "@tanstack/react-query";
-
-const CELL_TOTAL = CELL_SIZE + CELL_MARGIN * 2;
-const BOARD_SIZE = 15 * CELL_TOTAL + 2 * BOARD_PADDING;
 
 const QUICK_EMOJIS = ["👍", "🤩", "😱", "😈", "🤔", "😅", "🎉", "💀"];
 
@@ -54,7 +50,6 @@ export default function GameScreen() {
   const [blankModalVisible, setBlankModalVisible] = useState(false);
   const [pendingBlankPos, setPendingBlankPos] = useState<{ r: number; c: number } | null>(null);
   const [blankLetter, setBlankLetter] = useState("");
-  const [pendingDragTileIndex, setPendingDragTileIndex] = useState<number | null>(null);
   const [swapModalVisible, setSwapModalVisible] = useState(false);
   const [swapSelected, setSwapSelected] = useState<number[]>([]);
   const [hintVisible, setHintVisible] = useState(false);
@@ -63,25 +58,33 @@ export default function GameScreen() {
   const [floatingEmoji, setFloatingEmoji] = useState<string | null>(null);
   const [resignConfirmVisible, setResignConfirmVisible] = useState(false);
 
-  // Drag-and-drop state
-  const boardRef = useRef<View>(null);
-  const boardLayout = useRef({ x: 0, y: 0 });
-  const dragAnim = useRef(new Animated.ValueXY()).current;
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragLetter, setDragLetter] = useState("");
-  const [dropHighlight, setDropHighlight] = useState<{ row: number; col: number } | null>(null);
+  // ---------------------------------------------------------------------
+  // Drag-and-drop state (react-native-gesture-handler + reanimated).
+  // All per-frame values live in shared values on the UI thread; React
+  // state is only touched at drag start and on drop.
+  // ---------------------------------------------------------------------
+  const [dragLetter, setDragLetter] = useState<string | null>(null);
+  const boardWrapRef = useRef<View>(null);
+  const dragX = useSharedValue(0);
+  const dragY = useSharedValue(0);
+  const dragActive = useSharedValue(0);
+  const draggingIndex = useSharedValue(-1);
+  const hoverRow = useSharedValue(-1);
+  const hoverCol = useSharedValue(-1);
+  const boardOrigin = useSharedValue({ x: 0, y: 0 });
 
-  // Refs for stale-closure-safe access in PanResponders
-  const placedTilesRef = useRef(placedTiles);
-  const gameRef = useRef<any>(null);
-  const myRackRef = useRef<string[]>([]);
+  // Stable bundle passed to the rack + floating tile (shared values never
+  // change identity, so this memo never invalidates).
+  const dragShared: RackDragShared = useMemo(
+    () => ({ dragX, dragY, dragActive, draggingIndex, hoverRow, hoverCol, boardOrigin }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
   const hintVisibleRef = useRef(hintVisible);
-  const isDraggingRef = useRef(false); // tracks live drag state (setState is async, ref is sync)
-  useEffect(() => { placedTilesRef.current = placedTiles; }, [placedTiles]);
   useEffect(() => { hintVisibleRef.current = hintVisible; }, [hintVisible]);
 
   const { data: game, isLoading, refetch } = useGetGame(gameId!);
-  useEffect(() => { gameRef.current = game; }, [game]);
 
   const makeMove = useMakeMove({
     mutation: { onSuccess: () => { setPlacedTiles([]); setHintTiles([]); setHintVisible(false); refetch(); } },
@@ -131,9 +134,6 @@ export default function GameScreen() {
     setTimeout(() => setFloatingEmoji(null), 2000);
   };
 
-  // No hint useEffect — handleHint uses the fetchHint() return value directly so
-  // re-tapping after recall always triggers a fresh visual update.
-
   const opponent = useMemo(() => game?.players.find(p => p.userId !== user?.id), [game, user]);
   const me = useMemo(() => game?.players.find(p => p.userId === user?.id), [game, user]);
 
@@ -147,110 +147,57 @@ export default function GameScreen() {
     return rack;
   }, [game, placedTiles]);
 
-  useEffect(() => { myRackRef.current = myRack; }, [myRack]);
+  // 15x15 occupancy grid: committed board letters + tiles placed this turn.
+  // Captured by the drag worklet so invalid cells never highlight.
+  const occupied = useMemo(() => {
+    const grid: boolean[][] = Array.from({ length: 15 }, () => Array(15).fill(false));
+    if (game) {
+      for (let r = 0; r < 15; r++) {
+        for (let c = 0; c < 15; c++) {
+          if (game.board[r][c].letter) grid[r][c] = true;
+        }
+      }
+    }
+    placedTiles.forEach(t => { grid[t.row][t.col] = true; });
+    return grid;
+  }, [game, placedTiles]);
 
-  // Board layout measurement — account for centering offset.
-  // boardContainer is flex:1; the GameBoard is a fixed-size child centered inside it.
-  // measure() gives the container's screen-absolute top-left, so we shift by the centering gap.
-  const onBoardLayout = useCallback(() => {
-    boardRef.current?.measure((_, __, containerW, containerH, pageX, pageY) => {
-      boardLayout.current = {
-        x: pageX + Math.max(0, (containerW - BOARD_SIZE) / 2),
-        y: pageY + Math.max(0, (containerH - BOARD_SIZE) / 2),
-      };
+  // Measure the board's window position. Called on layout AND at the start
+  // of every drag, so coordinates can never go stale (the old code measured
+  // once and drifted whenever the layout shifted).
+  const measureBoard = useCallback(() => {
+    boardWrapRef.current?.measureInWindow((x, y) => {
+      boardOrigin.value = { x, y };
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const calcDropCell = useCallback((pageX: number, pageY: number) => {
-    const col = Math.floor((pageX - boardLayout.current.x - BOARD_PADDING) / CELL_TOTAL);
-    const row = Math.floor((pageY - boardLayout.current.y - BOARD_PADDING) / CELL_TOTAL);
-    if (row >= 0 && row < 15 && col >= 0 && col < 15) return { row, col };
-    return null;
+  const handleDragStart = useCallback((index: number) => {
+    setDragLetter(myRack[index] ?? null);
+    measureBoard();
+    if (hintVisibleRef.current) { setHintVisible(false); setHintTiles([]); }
+  }, [myRack, measureBoard]);
+
+  const handleDrop = useCallback((index: number, row: number, col: number) => {
+    if (row < 0 || col < 0) return; // released off-board or over an occupied cell
+    const letter = myRack[index];
+    if (!letter) return;
+    if (letter === "?") {
+      setPendingBlankPos({ r: row, c: col });
+      setBlankModalVisible(true);
+    } else {
+      setPlacedTiles(prev => [...prev, { row, col, letter, isBlank: false }]);
+    }
+  }, [myRack]);
+
+  const handleTilePress = useCallback((index: number) => {
+    if (hintVisibleRef.current) { setHintVisible(false); setHintTiles([]); }
+    setSelectedTileIndex(prev => prev === index ? null : index);
   }, []);
 
-  // PanResponder for rack tiles — handles both tap and drag from a plain View.
-  //
-  // Why not TouchableOpacity + PanResponder?
-  //   On native iOS, TouchableOpacity owns the touch after onStartShouldSetResponder.
-  //   The PanResponder's onMoveShouldSetPanResponderCapture cannot steal it reliably.
-  //
-  // Strategy:
-  //   • onStartShouldSetPanResponder: always true — PanResponder claims every touch.
-  //   • onPanResponderGrant: init position, but DON'T set isDragging yet (no floating tile).
-  //   • onPanResponderMove: once gestureState.dx/dy > 8, start the drag via isDraggingRef.
-  //   • onPanResponderRelease: if isDraggingRef → drop tile; otherwise → tap-select.
-  //   • isDraggingRef is a plain ref so PanResponder handlers always see the live value
-  //     (useState is async and would be stale inside a memoised closure).
-  const panResponders = useMemo(() => {
-    return myRackRef.current.map((letter, tileIndex) =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: (evt) => {
-          isDraggingRef.current = false;
-          const { pageX, pageY } = evt.nativeEvent;
-          // Pre-position the animated tile so it's ready the moment dragging begins
-          dragAnim.setValue({ x: pageX - 22, y: pageY - 44 });
-        },
-        onPanResponderMove: (evt, gestureState) => {
-          const { pageX, pageY } = evt.nativeEvent;
-          // Activate drag once movement crosses the threshold
-          if (!isDraggingRef.current && (Math.abs(gestureState.dx) > 8 || Math.abs(gestureState.dy) > 8)) {
-            isDraggingRef.current = true;
-            setIsDragging(true);
-            setDragLetter(myRackRef.current[tileIndex] ?? letter);
-            if (hintVisibleRef.current) { setHintVisible(false); setHintTiles([]); }
-          }
-          if (isDraggingRef.current) {
-            dragAnim.setValue({ x: pageX - 22, y: pageY - 44 });
-            const cell = calcDropCell(pageX, pageY);
-            const g = gameRef.current;
-            if (cell && g && !g.board[cell.row][cell.col].letter &&
-              !placedTilesRef.current.find(t => t.row === cell.row && t.col === cell.col)) {
-              setDropHighlight(cell);
-            } else {
-              setDropHighlight(null);
-            }
-          }
-        },
-        onPanResponderRelease: (evt) => {
-          if (isDraggingRef.current) {
-            // Drop: place tile on board
-            const { pageX, pageY } = evt.nativeEvent;
-            const cell = calcDropCell(pageX, pageY);
-            const g = gameRef.current;
-            const ltr = myRackRef.current[tileIndex] ?? letter;
-            if (cell && g && !g.board[cell.row][cell.col].letter &&
-              !placedTilesRef.current.find(t => t.row === cell.row && t.col === cell.col)) {
-              if (ltr === "?") {
-                setPendingBlankPos({ r: cell.row, c: cell.col });
-                setPendingDragTileIndex(tileIndex);
-                setBlankModalVisible(true);
-              } else {
-                setPlacedTiles(prev => [...prev, { row: cell.row, col: cell.col, letter: ltr, isBlank: false }]);
-              }
-            }
-          } else {
-            // Tap: toggle tile selection
-            if (hintVisibleRef.current) { setHintVisible(false); setHintTiles([]); }
-            setSelectedTileIndex(prev => prev === tileIndex ? null : tileIndex);
-          }
-          isDraggingRef.current = false;
-          setIsDragging(false);
-          setDropHighlight(null);
-        },
-        onPanResponderTerminate: () => {
-          isDraggingRef.current = false;
-          setIsDragging(false);
-          setDropHighlight(null);
-        },
-      })
-    );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myRack.join(","), calcDropCell]);
-
-  const handleCellPress = (r: number, c: number) => {
-    if (hintVisible) { setHintVisible(false); setHintTiles([]); return; }
+  const handleCellPress = useCallback((r: number, c: number) => {
+    if (hintVisibleRef.current) { setHintVisible(false); setHintTiles([]); return; }
+    // Tapping a tentatively placed tile returns it to the rack.
     const existingIdx = placedTiles.findIndex(t => t.row === r && t.col === c);
     if (existingIdx !== -1) {
       const updated = [...placedTiles];
@@ -258,17 +205,18 @@ export default function GameScreen() {
       setPlacedTiles(updated);
       return;
     }
+    // Tap-to-place: put the selected rack tile on an empty cell.
     if (selectedTileIndex === null || game?.board[r][c].letter) return;
     const letter = myRack[selectedTileIndex];
+    if (!letter) return;
     if (letter === "?") {
       setPendingBlankPos({ r, c });
-      setPendingDragTileIndex(null);
       setBlankModalVisible(true);
     } else {
       setPlacedTiles([...placedTiles, { row: r, col: c, letter, isBlank: false }]);
       setSelectedTileIndex(null);
     }
-  };
+  }, [placedTiles, selectedTileIndex, game, myRack]);
 
   const handleBlankSubmit = () => {
     if (blankLetter.length !== 1 || !pendingBlankPos) return;
@@ -278,7 +226,6 @@ export default function GameScreen() {
     }]);
     setBlankModalVisible(false);
     setPendingBlankPos(null);
-    setPendingDragTileIndex(null);
     setBlankLetter("");
     setSelectedTileIndex(null);
   };
@@ -385,17 +332,17 @@ export default function GameScreen() {
       )}
 
       {/* Board */}
-      <View
-        ref={boardRef}
-        style={styles.boardContainer}
-        onLayout={onBoardLayout}
-      >
-        <GameBoard
-          board={game.board}
-          placedTiles={displayedPlacedTiles}
-          onCellPress={handleCellPress}
-          dropHighlight={dropHighlight}
-        />
+      <View style={styles.boardContainer}>
+        {/* collapsable={false} is required so measureInWindow works on Android */}
+        <View ref={boardWrapRef} collapsable={false} onLayout={measureBoard}>
+          <GameBoard
+            board={game.board}
+            placedTiles={displayedPlacedTiles}
+            onCellPress={handleCellPress}
+            hoverRow={hoverRow}
+            hoverCol={hoverCol}
+          />
+        </View>
       </View>
 
       {/* Hint Banner */}
@@ -426,24 +373,16 @@ export default function GameScreen() {
       {/* Word Strength Meter */}
       {!hintVisible && <WordStrengthMeter gameId={gameId!} placedTiles={placedTiles} />}
 
-      {/* Tile Rack — PanResponder handles both tap (short press) and drag (move > 8px) */}
-      <View style={[styles.rack, { backgroundColor: colors.rackBackground }]}>
-        {myRack.map((letter, index) => (
-          <View
-            key={`${index}-${letter}`}
-            {...(panResponders[index]?.panHandlers ?? {})}
-          >
-            <View style={[styles.tileWrapper, selectedTileIndex === index && styles.tileSelected]}>
-              <TileComponent
-                letter={letter === "?" ? "?" : letter}
-                isBlank={letter === "?"}
-                isSelected={selectedTileIndex === index}
-                size={44}
-              />
-            </View>
-          </View>
-        ))}
-      </View>
+      {/* Tile Rack — gesture-handler tiles: tap to select, drag to place */}
+      <TileRack
+        tiles={myRack}
+        selectedTileIndex={selectedTileIndex}
+        onTilePress={handleTilePress}
+        onDragStart={handleDragStart}
+        onDrop={handleDrop}
+        occupied={occupied}
+        shared={dragShared}
+      />
 
       {/* Action Bar */}
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + 8, backgroundColor: colors.rackBackground }]}>
@@ -471,15 +410,8 @@ export default function GameScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Floating dragged tile */}
-      {isDragging && (
-        <Animated.View
-          style={[styles.floatingTile, { transform: dragAnim.getTranslateTransform() }]}
-          pointerEvents="none"
-        >
-          <TileComponent letter={dragLetter} isBlank={dragLetter === "?"} size={44} isSelected />
-        </Animated.View>
-      )}
+      {/* Floating dragged tile (UI-thread driven) */}
+      <FloatingDragTile shared={dragShared} letter={dragLetter} />
 
       {/* Blank Tile Modal */}
       <Modal visible={blankModalVisible} transparent animationType="fade">
@@ -681,12 +613,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between", paddingHorizontal: 16,
   },
   myScoreText: { fontSize: 14 },
-  rack: {
-    height: 68, flexDirection: "row", alignItems: "center",
-    justifyContent: "center", gap: 6, paddingHorizontal: 10,
-  },
-  tileWrapper: { borderRadius: 6 },
-  tileSelected: { opacity: 0.6 },
   actionBar: {
     flexDirection: "row", justifyContent: "space-around", alignItems: "center",
     paddingHorizontal: 12, paddingTop: 12,
@@ -697,7 +623,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28, paddingVertical: 14, borderRadius: 24, minWidth: 130, alignItems: "center",
   },
   submitText: { fontWeight: "bold", fontSize: 15 },
-  floatingTile: { position: "absolute", zIndex: 999 },
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" },
   modalBox: { width: 280, padding: 24, borderRadius: 16, alignItems: "center", gap: 16 },
   swapBox: {
